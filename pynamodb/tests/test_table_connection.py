@@ -5,6 +5,7 @@ import six
 from pynamodb.compat import CompatTestCase as TestCase
 from pynamodb.connection import TableConnection
 from pynamodb.constants import DEFAULT_REGION
+from pynamodb.expressions.operand import Path
 from pynamodb.tests.data import DESCRIBE_TABLE_DATA, GET_ITEM_DATA
 from pynamodb.tests.response import HttpOK
 
@@ -208,7 +209,7 @@ class ConnectionTestCase(TestCase):
 
     def test_update_item(self):
         """
-        TableConnection.delete_item
+        TableConnection.update_item
         """
         conn = TableConnection(self.test_table_name)
         with patch(PATCH_METHOD) as req:
@@ -238,12 +239,13 @@ class ConnectionTestCase(TestCase):
                         'S': 'foo-range-key'
                     }
                 },
-                'AttributeUpdates': {
-                    'Subject': {
-                        'Value': {
-                            'S': 'foo-subject'
-                        },
-                        'Action': 'PUT'
+                'UpdateExpression': 'SET #0 = :0',
+                'ExpressionAttributeNames': {
+                    '#0': 'Subject'
+                },
+                'ExpressionAttributeValues': {
+                    ':0': {
+                        'S': 'foo-subject'
                     }
                 },
                 'ReturnConsumedCapacity': 'TOTAL',
@@ -315,6 +317,32 @@ class ConnectionTestCase(TestCase):
                 'foo-key',
                 range_key='foo-range-key',
                 attributes={'ForumName': 'foo-value'},
+                condition=Path('ForumName').does_not_exist()
+            )
+            params = {
+                'ReturnConsumedCapacity': 'TOTAL',
+                'Item': {
+                    'ForumName': {
+                        'S': 'foo-value'
+                    },
+                    'Subject': {
+                        'S': 'foo-range-key'
+                    }
+                },
+                'TableName': self.test_table_name,
+                'ConditionExpression': 'attribute_not_exists (#0)',
+                'ExpressionAttributeNames': {
+                    '#0': 'ForumName'
+                }
+            }
+            self.assertEqual(req.call_args[0][1], params)
+
+        with patch(PATCH_METHOD) as req:
+            req.return_value = HttpOK(), {}
+            conn.put_item(
+                'foo-key',
+                range_key='foo-range-key',
+                attributes={'ForumName': 'foo-value'},
                 conditional_operator='and',
                 expected={
                     'ForumName': {
@@ -333,11 +361,9 @@ class ConnectionTestCase(TestCase):
                     }
                 },
                 'TableName': self.test_table_name,
-                'ConditionalOperator': 'AND',
-                'Expected': {
-                    'ForumName': {
-                        'Exists': False
-                    }
+                'ConditionExpression': 'attribute_not_exists (#0)',
+                'ExpressionAttributeNames': {
+                    '#0': 'ForumName'
                 }
             }
             self.assertEqual(req.call_args[0][1], params)
@@ -427,19 +453,51 @@ class ConnectionTestCase(TestCase):
         with patch(PATCH_METHOD) as req:
             req.return_value = DESCRIBE_TABLE_DATA
             conn.describe_table()
+
         with patch(PATCH_METHOD) as req:
             req.return_value = {}
             conn.query(
                 "FooForum",
-                key_conditions={'ForumName': {'ComparisonOperator': 'BEGINS_WITH', 'AttributeValueList': ['thread']}}
+                Path('Subject').startswith('thread')
             )
             params = {
                 'ReturnConsumedCapacity': 'TOTAL',
-                'KeyConditions': {
-                    'ForumName': {
-                        'ComparisonOperator': 'BEGINS_WITH', 'AttributeValueList': [{
-                            'S': 'thread'
-                        }]
+                'KeyConditionExpression': '(#0 = :0 AND begins_with (#1, :1))',
+                'ExpressionAttributeNames': {
+                    '#0': 'ForumName',
+                    '#1': 'Subject'
+                },
+                'ExpressionAttributeValues': {
+                    ':0': {
+                        'S': 'FooForum'
+                    },
+                    ':1': {
+                        'S': 'thread'
+                    }
+                },
+                'TableName': self.test_table_name
+            }
+            self.assertEqual(req.call_args[0][1], params)
+
+        with patch(PATCH_METHOD) as req:
+            req.return_value = {}
+            conn.query(
+                "FooForum",
+                key_conditions={'Subject': {'ComparisonOperator': 'BEGINS_WITH', 'AttributeValueList': ['thread']}}
+            )
+            params = {
+                'ReturnConsumedCapacity': 'TOTAL',
+                'KeyConditionExpression': '(#0 = :0 AND begins_with (#1, :1))',
+                'ExpressionAttributeNames': {
+                    '#0': 'ForumName',
+                    '#1': 'Subject'
+                },
+                'ExpressionAttributeValues': {
+                    ':0': {
+                        'S': 'FooForum'
+                    },
+                    ':1': {
+                        'S': 'thread'
                     }
                 },
                 'TableName': self.test_table_name
@@ -462,3 +520,45 @@ class ConnectionTestCase(TestCase):
                 'TableName': self.test_table_name
             }
             self.assertEqual(req.call_args[0][1], params)
+
+    def test_rate_limited_scan(self):
+        """
+        TableConnection.rate_limited_scan
+        """
+        conn = TableConnection(self.test_table_name)
+        with patch('pynamodb.connection.Connection.rate_limited_scan') as req:
+            req.return_value = {}
+            conn.rate_limited_scan(attributes_to_get='attributes_to_get',
+                page_size=1,
+                limit=2,
+                conditional_operator='AND',
+                scan_filter={'filter': 'X'},
+                segment=2,
+                total_segments=4,
+                exclusive_start_key='EX',
+                timeout_seconds=11,
+                read_capacity_to_consume_per_second=12,
+                allow_rate_limited_scan_without_consumed_capacity=False,
+                max_sleep_between_retry=3,
+                max_consecutive_exceptions=7,
+                consistent_read=True
+            )
+            self.assertEqual(self.test_table_name, req.call_args[0][0])
+            params = {
+                'filter_condition': None,
+                'attributes_to_get': 'attributes_to_get',
+                'page_size': 1,
+                'limit': 2,
+                'conditional_operator': 'AND',
+                'scan_filter': {'filter': 'X'},
+                'segment': 2,
+                'total_segments': 4,
+                'exclusive_start_key': 'EX',
+                'timeout_seconds': 11,
+                'read_capacity_to_consume_per_second': 12,
+                'allow_rate_limited_scan_without_consumed_capacity': False,
+                'max_sleep_between_retry': 3,
+                'max_consecutive_exceptions': 7,
+                'consistent_read': True
+            }
+            self.assertEqual(params, req.call_args[1])

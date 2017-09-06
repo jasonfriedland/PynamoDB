@@ -17,7 +17,7 @@ Why PynamoDB?
 ^^^^^^^^^^^^^
 
 It all started when I needed to use Global Secondary Indexes, a new and powerful feature of
-DynamoDB. I quickly realized that my go to library, `dynamodb-mapper <http://dynamodb-mapper.readthedocs.org/en/latest/>`__, didn't support them.
+DynamoDB. I quickly realized that my go to library, `dynamodb-mapper <https://dynamodb-mapper.readthedocs.io/en/latest/>`__, didn't support them.
 In fact, it won't be supporting them anytime soon because dynamodb-mapper relies on another
 library, `boto.dynamodb <http://docs.pythonboto.org/en/latest/migrations/dynamodb_v1_to_v2.html>`__,
 which itself won't support them. In fact, boto doesn't support
@@ -31,7 +31,7 @@ Installation
     $ pip install pynamodb
 
 
-Don't have pip? `Here are instructions for installing pip. <http://pip.readthedocs.org/en/latest/installing.html>`_.
+Don't have pip? `Here are instructions for installing pip. <https://pip.readthedocs.io/en/latest/installing.html>`_.
 
 Getting Started
 ^^^^^^^^^^^^^^^
@@ -40,7 +40,7 @@ PynamoDB provides three API levels, a ``Connection``, a ``TableConnection``, and
 Each API is built on top of the previous, and adds higher level features. Each API level is
 fully featured, and can be used directly. Before you begin, you should already have an
 `Amazon Web Services account <http://aws.amazon.com/>`__, and have your
-`AWS credentials configured your boto <http://boto.readthedocs.org/en/latest/boto_config_tut.html>`__.
+`AWS credentials configured your boto <https://boto.readthedocs.io/en/latest/boto_config_tut.html>`__.
 
 Defining a Model
 ----------------
@@ -275,7 +275,26 @@ You can update an item with the latest data from your table:
     >>> thread_item.refresh()
 
 Updates to table items are supported too, even atomic updates. Here is an example of
-atomically updating the view count of an item:
+atomically updating the view count of an item + updating the value of the last post.
+
+.. code-block:: python
+
+    >>> thread_item.update({
+            'views': {
+                'action': 'add',
+                'value': 1,
+            },
+            'last_post_datetime': {
+                'action': 'put',
+                'value': datetime.now(),
+            },
+        })
+
+
+.. deprecated:: 2.0
+
+    :func:`update_item` is replaced with :func:`update`
+
 
 .. code-block:: python
 

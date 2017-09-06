@@ -62,6 +62,15 @@ KEYS = 'Keys'
 UTC = 'UTC'
 KEY = 'Key'
 
+# Expression Parameters
+CONDITION_EXPRESSION = 'ConditionExpression'
+EXPRESSION_ATTRIBUTE_NAMES = 'ExpressionAttributeNames'
+EXPRESSION_ATTRIBUTE_VALUES = 'ExpressionAttributeValues'
+FILTER_EXPRESSION = 'FilterExpression'
+KEY_CONDITION_EXPRESSION = 'KeyConditionExpression'
+PROJECTION_EXPRESSION = 'ProjectionExpression'
+UPDATE_EXPRESSION = 'UpdateExpression'
+
 # Defaults
 DEFAULT_ENCODING = 'utf-8'
 DEFAULT_REGION = 'us-east-1'
@@ -81,13 +90,23 @@ NUMBER_SHORT = 'N'
 NUMBER_SET_SHORT = 'NS'
 BINARY_SHORT = 'B'
 BINARY_SET_SHORT = 'BS'
+MAP_SHORT = 'M'
+LIST_SHORT = 'L'
+BOOLEAN = 'BOOL'
+BOOLEAN_SHORT = 'BOOL'
 STRING = 'String'
 STRING_SET = 'StringSet'
 NUMBER = 'Number'
 NUMBER_SET = 'NumberSet'
 BINARY = 'Binary'
 BINARY_SET = 'BinarySet'
-SHORT_ATTR_TYPES = [STRING_SHORT, STRING_SET_SHORT, NUMBER_SHORT, NUMBER_SET_SHORT, BINARY_SHORT, BINARY_SET_SHORT]
+MAP = 'Map'
+LIST = 'List'
+NULL = 'NULL'
+NULL_SHORT = 'NULL'
+
+SHORT_ATTR_TYPES = [STRING_SHORT, STRING_SET_SHORT, NUMBER_SHORT, NUMBER_SET_SHORT,
+                    BINARY_SHORT, BINARY_SET_SHORT, MAP_SHORT, LIST_SHORT, BOOLEAN_SHORT, NULL_SHORT]
 ATTR_TYPE_MAP = {
     STRING: STRING_SHORT,
     STRING_SET: STRING_SET_SHORT,
@@ -100,7 +119,11 @@ ATTR_TYPE_MAP = {
     NUMBER_SHORT: NUMBER,
     NUMBER_SET_SHORT: NUMBER_SET,
     BINARY_SHORT: BINARY,
-    BINARY_SET_SHORT: BINARY_SET
+    BINARY_SET_SHORT: BINARY_SET,
+    MAP: MAP_SHORT,
+    LIST: LIST_SHORT,
+    BOOLEAN: BOOLEAN_SHORT,
+    NULL: NULL_SHORT,
 }
 # Constants needed for creating indexes
 LOCAL_SECONDARY_INDEX = 'LocalSecondaryIndex'
@@ -123,8 +146,8 @@ STREAM_OLD_IMAGE = 'OLD_IMAGE'
 STREAM_NEW_AND_OLD_IMAGE = 'NEW_AND_OLD_IMAGES'
 STREAM_KEYS_ONLY = 'KEYS_ONLY'
 
-# These are constants used in the KeyConditions parameter
-# See: http://docs.aws.amazon.com/amazondynamodb/latest/APIReference/API_Query.html#DDB-Query-request-KeyConditions
+# These are constants used in the KeyConditionExpression parameter
+# http://docs.aws.amazon.com/amazondynamodb/latest/APIReference/API_Query.html#DDB-Query-request-KeyConditionExpression
 EXCLUSIVE_START_KEY = 'ExclusiveStartKey'
 LAST_EVALUATED_KEY = 'LastEvaluatedKey'
 QUERY_FILTER = 'QueryFilter'
@@ -148,11 +171,19 @@ QUERY_OPERATOR_MAP = {
     'begins_with': BEGINS_WITH,
     'between': BETWEEN
 }
+KEY_CONDITION_OPERATOR_MAP = {
+    EQ: '__eq__',
+    LE: '__le__',
+    LT: '__lt__',
+    GE: '__ge__',
+    GT: '__gt__',
+    BEGINS_WITH: 'startswith',
+    BETWEEN: 'between'
+}
 
 # These are the valid select values for the Scan operation
 # See: http://docs.aws.amazon.com/amazondynamodb/latest/APIReference/API_Scan.html#DDB-Scan-request-Select
 NOT_NULL = 'NOT_NULL'
-NULL = 'NULL'
 CONTAINS = 'CONTAINS'
 NOT_CONTAINS = 'NOT_CONTAINS'
 ALL_ATTRIBUTES = 'ALL_ATTRIBUTES'
@@ -188,6 +219,21 @@ TOTAL_SEGMENTS = 'TotalSegments'
 SCAN_FILTER_VALUES = [EQ, NE, LE, LT, GE, GT, NOT_NULL, NULL, CONTAINS, NOT_CONTAINS, BEGINS_WITH, IN, BETWEEN]
 QUERY_FILTER_VALUES = SCAN_FILTER_VALUES
 DELETE_FILTER_VALUES = SCAN_FILTER_VALUES
+FILTER_EXPRESSION_OPERATOR_MAP = {
+    EQ: '__eq__',
+    NE: '__ne__',
+    LE: '__le__',
+    LT: '__lt__',
+    GE: '__ge__',
+    GT: '__gt__',
+    NOT_NULL: 'exists',
+    NULL: 'does_not_exist',
+    CONTAINS: 'contains',
+    NOT_CONTAINS: 'contains',  # special cased
+    BEGINS_WITH: 'startswith',
+    IN: 'is_in',
+    BETWEEN: 'between'
+}
 
 
 # These are constants used in the expected condition for PutItem

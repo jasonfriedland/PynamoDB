@@ -88,14 +88,14 @@ Now, suppose that you want to search the table for users with a last name
 
 ::
 
-    for user in UserModel.query('Smith', first_name__begins_with='J'):
+    for user in UserModel.query('Smith', UserModel.first_name.startswith('J')):
         print(user.first_name)
 
-You can combine query terms using 'AND' or 'OR':
+You can combine query terms:
 
 ::
 
-    for user in UserModel.query('Smith', first_name__begins_with='J', email__contains='domain.com', conditional_operator='OR'):
+    for user in UserModel.query('Smith', UserModel.first_name.startswith('J') | UserModel.email.contains('domain.com')):
         print(user)
 
 
@@ -106,7 +106,7 @@ You can retrieve the count for queries by using the `count` method:
 
 ::
 
-    print(UserModel.count('Smith', first_name__begins_with='J'))
+    print(UserModel.count('Smith', UserModel.first_name.startswith('J'))
 
 
 Counts also work for indexes:
@@ -121,6 +121,18 @@ Alternatively, you can retrieve the table item count by calling the `count` meth
 ::
 
     print(UserModel.count())
+
+
+Note that the first positional argument to `count()` is a `hash_key`. Although
+this argument can be `None`, filters must not be used when `hash_key` is `None`:
+
+::
+
+    # raises a ValueError
+    print(UserModel.count(UserModel.first_name == 'John'))
+
+    # returns count of only the matching users
+    print(UserModel.count('my_hash_key', UserModel.first_name == 'John'))
 
 
 Batch Operations
@@ -156,4 +168,3 @@ Perhaps you want to delete all these users:
         items = [UserModel('user-{0}@example.com'.format(x)) for x in range(100)]
         for item in items:
             batch.delete(item)
-

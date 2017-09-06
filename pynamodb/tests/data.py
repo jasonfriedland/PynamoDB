@@ -361,6 +361,335 @@ GET_MODEL_ITEM_DATA = {
         }
     }
 }
+
+GET_OFFICE_EMPLOYEE_ITEM_DATA = {
+    'Item': {
+        'office_employee_id': {
+            'N': '123'
+        },
+        'person': {
+            'M': {
+                'firstName': {
+                    'S': 'Justin'
+                },
+                'lname': {
+                    'S': 'Phillips'
+                },
+                'age': {
+                    'N': '31'
+                },
+                'is_dude': {
+                    'N': '1'
+                }
+            }
+        },
+        'office_location': {
+            'M': {
+                'latitude': {
+                    'N': '37.77461'
+                },
+                'longitude': {
+                    'N': '122.3957216'
+                },
+                'name': {
+                    'S': 'Lyft HQ'
+                }
+            }
+        }
+    }
+}
+
+GET_OFFICE_EMPLOYEE_ITEM_DATA_WITH_NULL = {
+    'Item': {
+        'office_employee_id': {
+            'N': '123'
+        },
+        'person': {
+            'M': {
+                'firstName': {
+                    'S': 'Justin'
+                },
+                'lname': {
+                    'S': 'Phillips'
+                },
+                'age': {
+                    'NULL': True
+                },
+                'is_dude': {
+                    'NULL': True
+                }
+            }
+        },
+        'office_location': {
+            'M': {
+                'latitude': {
+                    'N': '37.77461'
+                },
+                'longitude': {
+                    'N': '122.3957216'
+                },
+                'name': {
+                    'S': 'Lyft HQ'
+                }
+            }
+        }
+    }
+}
+
+GET_GROCERY_LIST_ITEM_DATA = {
+    'Item': {
+        'store_name': {
+            'S': 'Haight Street Market'
+        },
+        'groceries': {
+            'L': [
+                {'S': 'bread'}, {'N': '1'}, {'S': 'butter'}, {'N': '6'}, {'S': 'milk'}, {'N': '1'}
+            ]
+        }
+    }
+}
+
+COMPLEX_MODEL_ITEM_DATA = {
+    'Item': {
+        'key': {
+            'N': '123'
+        },
+        'weird_person': {
+            'M': {
+                'firstName': {
+                    'S': 'Justin'
+                },
+                'lname': {
+                    'S': 'Phillips'
+                },
+                'age': {
+                    'N': '31'
+                },
+                'is_dude': {
+                    'N': '1'
+                }
+            }
+        }
+    }
+}
+
+FULL_CAR_MODEL_ITEM_DATA = {
+    'Item': {
+        'car_id': {
+            'N': '123'
+        },
+        'car_info': {
+            'M': {
+                'make': {
+                    'S': 'Volkswagen'
+                },
+                'model': {
+                    'S': 'Beetle'
+                }
+            }
+        }
+    }
+}
+
+CAR_MODEL_WITH_NULL_ITEM_DATA = {
+    'Item': {
+        'car_id': {
+            'N': '123'
+        },
+        'car_info': {
+            'M': {
+                'make': {
+                    'S': 'Dodge'
+                }
+            }
+        }
+    }
+}
+
+INVALID_CAR_MODEL_WITH_NULL_ITEM_DATA = {
+    'Item': {
+        'car_id': {
+            'N': '123'
+        },
+        'car_info': {
+            'M': {
+                'model': {
+                    'S': 'Envoy'
+                }
+            }
+        }
+    }
+}
+
+GET_OFFICE_ITEM_DATA = {
+    'Item': {
+        'office_id': {
+            'N': '6161'
+        },
+        'address': {
+            'M': {
+                'latitude': {
+                    'N': '37.77461'
+                },
+                'longitude': {
+                    'N': '122.3957216'
+                },
+                'name': {
+                    'S': 'Lyft HQ'
+                }
+            }
+        },
+        'employees': {
+            'L': [
+                {
+                    'M': {
+                        'office_employee_id': {
+                            'N': '123'
+                        },
+                        'person': {
+                            'M': {
+                                'firstName': {
+                                    'S': 'Justin'
+                                },
+                                'lname': {
+                                    'S': 'Phillips'
+                                },
+                                'age': {
+                                    'N': '31'
+                                },
+                                'is_dude': {
+                                    'N': '1'
+                                }
+                            }
+                        },
+                        'office_location': {
+                            'M': {
+                                'latitude': {
+                                    'N': '37.77461'
+                                },
+                                'longitude': {
+                                    'N': '122.3957216'
+                                },
+                                'name': {
+                                    'S': 'Lyft HQ'
+                                }
+                            }
+                        }
+                    }
+                },
+                {
+                    'M': {
+                        'office_employee_id': {
+                            'N': '456'
+                        },
+                        'person': {
+                            'M': {
+                                'firstName': {
+                                    'S': 'Garrett'
+                                },
+                                'lname': {
+                                    'S': 'Heel'
+                                },
+                                'age': {
+                                    'N': '30'
+                                },
+                                'is_dude': {
+                                    'N': '1'
+                                }
+                            }
+                        },
+                        'office_location': {
+                            'M': {
+                                'latitude': {
+                                    'N': '37.77461'
+                                },
+                                'longitude': {
+                                    'N': '122.3957216'
+                                },
+                                'name': {
+                                    'S': 'Lyft HQ gh'
+                                }
+                            }
+                        }
+                    }
+                },
+                {
+                    'M': {
+                        'office_employee_id': {
+                            'N': '789'
+                        },
+                        'person': {
+                            'M': {
+                                'firstName': {
+                                    'S': 'Lei'
+                                },
+                                'lname': {
+                                    'S': 'Ding'
+                                },
+                                'age': {
+                                    'N': '32'
+                                },
+                                'is_dude': {
+                                    'N': '1'
+                                }
+                            }
+                        },
+                        'office_location': {
+                            'M': {
+                                'latitude': {
+                                    'N': '37.77461'
+                                },
+                                'longitude': {
+                                    'N': '122.3957216'
+                                },
+                                'name': {
+                                    'S': 'Lyft HQ ld'
+                                }
+                            }
+                        }
+                    }
+                },
+                {
+                    'M': {
+                        'office_employee_id': {
+                            'N': '901'
+                        },
+                        'person': {
+                            'M': {
+                                'firstName': {
+                                    'S': 'Tanya'
+                                },
+                                'lname': {
+                                    'S': 'Ashkenazi'
+                                },
+                                'age': {
+                                    'N': '30'
+                                },
+                                'is_dude': {
+                                    'N': '0'
+                                }
+                            }
+                        },
+                        'office_location': {
+                            'M': {
+                                'latitude': {
+                                    'N': '37.77461'
+                                },
+                                'longitude': {
+                                    'N': '122.3957216'
+                                },
+                                'name': {
+                                    'S': 'Lyft HQ ta'
+                                }
+                            }
+                        }
+                    }
+                },
+            ]
+        }
+    }
+}
+
 COMPLEX_ITEM_DATA = {
     "ConsumedCapacity": {
         "CapacityUnits": 1,
@@ -496,3 +825,531 @@ SERIALIZED_TABLE_DATA = [
         }
     ]
 ]
+
+OFFICE_EMPLOYEE_MODEL_TABLE_DATA = {
+    "Table": {
+        "AttributeDefinitions": [
+            {
+                "AttributeName": "office_employee_id",
+                "AttributeType": "N"
+            },
+            {
+                "AttributeName": "person",
+                "AttributeType": "M"
+            },
+            {
+                "AttributeName": "office_location",
+                "AttributeType": "M"
+            }
+        ],
+        "CreationDateTime": 1.363729002358E9,
+        "ItemCount": 0,
+        "KeySchema": [
+            {
+                "AttributeName": "office_employee_id",
+                "KeyType": "HASH"
+            }
+        ],
+        "ProvisionedThroughput": {
+            "NumberOfDecreasesToday": 0,
+            "ReadCapacityUnits": 5,
+            "WriteCapacityUnits": 5
+        },
+        "TableName": "OfficeEmployeeModel",
+        "TableSizeBytes": 0,
+        "TableStatus": "ACTIVE"
+    }
+}
+
+CAR_MODEL_TABLE_DATA = {
+    "Table": {
+        "AttributeDefinitions": [
+            {
+                "AttributeName": "car_id",
+                "AttributeType": "N"
+            },
+            {
+                "AttributeName": "car_info",
+                "AttributeType": "M"
+            }
+        ],
+        "CreationDateTime": 1.363729002358E9,
+        "ItemCount": 0,
+        "KeySchema": [
+            {
+                "AttributeName": "car_id",
+                "KeyType": "HASH"
+            }
+        ],
+        "ProvisionedThroughput": {
+            "NumberOfDecreasesToday": 0,
+            "ReadCapacityUnits": 5,
+            "WriteCapacityUnits": 5
+        },
+        "TableName": "CarModel",
+        "TableSizeBytes": 0,
+        "TableStatus": "ACTIVE"
+    }
+}
+
+GROCERY_LIST_MODEL_TABLE_DATA = {
+    "Table": {
+        "AttributeDefinitions": [
+            {
+                "AttributeName": "groceries",
+                "AttributeType": "L"
+            },
+            {
+                "AttributeName": "store_name",
+                "AttributeType": "S"
+            }
+        ],
+        "CreationDateTime": 1.363729002358E9,
+        "ItemCount": 0,
+        "KeySchema": [
+            {
+                "AttributeName": "store_name",
+                "KeyType": "HASH"
+            }
+        ],
+        "ProvisionedThroughput": {
+            "NumberOfDecreasesToday": 0,
+            "ReadCapacityUnits": 5,
+            "WriteCapacityUnits": 5
+        },
+        "TableName": "GroceryListModel",
+        "TableSizeBytes": 0,
+        "TableStatus": "ACTIVE"
+    }
+}
+
+OFFICE_MODEL_TABLE_DATA = {
+    "Table": {
+        "AttributeDefinitions": [
+            {
+                "AttributeName": "office_id",
+                "AttributeType": "N"
+            },
+            {
+                "AttributeName": "address",
+                "AttributeType": "M"
+            },
+            {
+                "AttributeName": "employees",
+                "AttributeType": "L"
+            }
+        ],
+        "CreationDateTime": 1.363729002358E9,
+        "ItemCount": 0,
+        "KeySchema": [
+            {
+                "AttributeName": "office_id",
+                "KeyType": "HASH"
+            }
+        ],
+        "ProvisionedThroughput": {
+            "NumberOfDecreasesToday": 0,
+            "ReadCapacityUnits": 5,
+            "WriteCapacityUnits": 5
+        },
+        "TableName": "OfficeModel",
+        "TableSizeBytes": 0,
+        "TableStatus": "ACTIVE"
+    }
+}
+
+COMPLEX_MODEL_TABLE_DATA = {
+    "Table": {
+        "AttributeDefinitions": [
+            {
+                "AttributeName": "key",
+                "AttributeType": "N"
+            },
+            {
+                "AttributeName": "person",
+                "AttributeType": "M"
+            }
+        ],
+        "CreationDateTime": 1.363729002358E9,
+        "ItemCount": 0,
+        "KeySchema": [
+            {
+                "AttributeName": "key",
+                "KeyType": "HASH"
+            }
+        ],
+        "ProvisionedThroughput": {
+            "NumberOfDecreasesToday": 0,
+            "ReadCapacityUnits": 5,
+            "WriteCapacityUnits": 5
+        },
+        "TableName": "ComplexModel",
+        "TableSizeBytes": 0,
+        "TableStatus": "ACTIVE"
+     }
+}
+
+BOOLEAN_CONVERSION_MODEL_TABLE_DATA_OLD_STYLE = {
+    'Table': {
+        'ItemCount': 0, 'TableName': 'BooleanConversionTable',
+        'ProvisionedThroughput': {
+            'ReadCapacityUnits': 2,
+            'WriteCapacityUnits': 2,
+            'NumberOfDecreasesToday': 0
+        },
+        'CreationDateTime': 1391471876.86,
+        'TableStatus': 'ACTIVE',
+        'AttributeDefinitions': [
+            {
+                'AttributeName': 'user_name',
+                'AttributeType': 'S'
+            },
+            {
+                'AttributeName': 'is_human',
+                'AttributeType': 'N'
+            }
+        ],
+        'KeySchema': [
+            {
+                'AttributeName': 'user_name', 'KeyType': 'HASH'
+            }
+        ],
+        'TableSizeBytes': 0
+    }
+}
+
+BOOLEAN_CONVERSION_MODEL_TABLE_DATA = {
+    'Table': {
+        'ItemCount': 0, 'TableName': 'BooleanConversionTable',
+        'ProvisionedThroughput': {
+            'ReadCapacityUnits': 2,
+            'WriteCapacityUnits': 2,
+            'NumberOfDecreasesToday': 0
+        },
+        'CreationDateTime': 1391471876.86,
+        'TableStatus': 'ACTIVE',
+        'AttributeDefinitions': [
+            {
+                'AttributeName': 'user_name',
+                'AttributeType': 'S'
+            },
+            {
+                'AttributeName': 'is_human',
+                'AttributeType': 'BOOL'
+            }
+        ],
+        'KeySchema': [
+            {
+                'AttributeName': 'user_name', 'KeyType': 'HASH'
+            }
+        ],
+        'TableSizeBytes': 0
+    }
+}
+
+BOOLEAN_CONVERSION_MODEL_OLD_STYLE_TRUE_ITEM_DATA = {
+    'Item': {
+        'user_name': {
+            'S': 'justin'
+        },
+        'is_human': {
+            'N': '1'
+        }
+    }
+}
+
+BOOLEAN_CONVERSION_MODEL_OLD_STYLE_FALSE_ITEM_DATA = {
+    'Item': {
+        'user_name': {
+            'S': 'alf'
+        },
+        'is_human': {
+            'N': '0'
+        }
+    }
+}
+
+BOOLEAN_CONVERSION_MODEL_NEW_STYLE_TRUE_ITEM_DATA = {
+    'Item': {
+        'user_name': {
+            'S': 'justin'
+        },
+        'is_human': {
+            'BOOL': True
+        }
+    }
+}
+
+BOOLEAN_CONVERSION_MODEL_NEW_STYLE_FALSE_ITEM_DATA = {
+    'Item': {
+        'user_name': {
+            'S': 'alf'
+        },
+        'is_human': {
+            'BOOL': False
+        }
+    }
+}
+
+TREE_MODEL_TABLE_DATA = {
+    'Table': {
+        'ItemCount': 0, 'TableName': 'TreeModelTable',
+        'ProvisionedThroughput': {
+            'ReadCapacityUnits': 2,
+            'WriteCapacityUnits': 2,
+            'NumberOfDecreasesToday': 0
+        },
+        'CreationDateTime': 1391471876.86,
+        'TableStatus': 'ACTIVE',
+        'AttributeDefinitions': [
+            {
+                'AttributeName': 'tree_key',
+                'AttributeType': 'S'
+            },
+            {
+                'AttributeName': 'left',
+                'AttributeType': 'M'
+            },
+            {
+                'AttributeName': 'right',
+                'AttributeType': 'M'
+            }
+        ],
+        'KeySchema': [
+            {
+                'AttributeName': 'tree_key', 'KeyType': 'HASH'
+            }
+        ],
+        'TableSizeBytes': 0
+    }
+}
+
+TREE_MODEL_ITEM_DATA = {
+    'Item': {
+        'tree_key': {
+            'S': '123'
+        },
+        'left': {
+            'M': {
+                'value': {
+                    'N': '1'
+                },
+                'left': {
+                    'M': {
+                        'value': {
+                            'N': '2'
+                        },
+                        'left': {
+                            'M': {
+                                'value': {
+                                    'N': '3'
+                                }
+                            }
+                        },
+                        'right': {
+                            'M': {
+                                'value': {
+                                    'N': '4'
+                                }
+                            }
+                        }
+                    }
+                },
+                'right': {
+                    'M': {
+                        'value': {
+                            'N': '2'
+                        },
+                        'left': {
+                            'M': {
+                                'value': {
+                                    'N': '3'
+                                }
+                            }
+                        },
+                        'right': {
+                            'M': {
+                                'value': {
+                                    'N': '4'
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        'right': {
+            'M': {
+                'value': {
+                    'N': '1'
+                },
+                'left': {
+                    'M': {
+                        'value': {
+                            'N': '2'
+                        },
+                        'left': {
+                            'M': {
+                                'value': {
+                                    'N': '3'
+                                }
+                            }
+                        },
+                        'right': {
+                            'M': {
+                                'value': {
+                                    'N': '4'
+                                }
+                            }
+                        }
+                    }
+                },
+                'right': {
+                    'M': {
+                        'value': {
+                            'N': '2'
+                        },
+                        'left': {
+                            'M': {
+                                'value': {
+                                    'N': '3'
+                                }
+                            }
+                        },
+                        'right': {
+                            'M': {
+                                'value': {
+                                    'N': '4'
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+EXPLICIT_RAW_MAP_MODEL_TABLE_DATA = {
+    'Table': {
+        'ItemCount': 0, 'TableName': 'ExplicitRawMapModel',
+        'ProvisionedThroughput': {
+            'ReadCapacityUnits': 2,
+            'WriteCapacityUnits': 2,
+            'NumberOfDecreasesToday': 0
+        },
+        'CreationDateTime': 1391471876.86,
+        'TableStatus': 'ACTIVE',
+        'AttributeDefinitions': [
+            {
+                'AttributeName': 'map_id',
+                'AttributeType': 'N'
+            },
+            {
+                'AttributeName': 'map_attr',
+                'AttributeType': 'M'
+            }
+        ],
+        'KeySchema': [
+            {
+                'AttributeName': 'map_id', 'KeyType': 'HASH'
+            }
+        ],
+        'TableSizeBytes': 0
+    }
+}
+
+EXPLICIT_RAW_MAP_MODEL_ITEM_DATA = {
+    'Item': {
+        'map_id': {
+            'N': '123',
+        },
+        'map_attr': {'M': {
+                'foo': {'S': 'bar'},
+                'num': {'N': '1'},
+                'bool_type': {'BOOL': True},
+                'other_b_type': {'BOOL': False},
+                'floaty': {'N': '1.2'},
+                'listy': {'L': [{'N': '1'}, {'N': '2'}, {'N': '12345678909876543211234234324234'}]},
+                'mapy': {'M': {'baz': {'S': 'bongo'}}}
+            }
+        }
+    }
+}
+
+EXPLICIT_RAW_MAP_MODEL_AS_SUB_MAP_IN_TYPED_MAP_TABLE_DATA = {
+    'Table': {
+        'ItemCount': 0, 'TableName': 'ExplicitRawMapAsMemberOfSubClass',
+        'ProvisionedThroughput': {
+            'ReadCapacityUnits': 2,
+            'WriteCapacityUnits': 2,
+            'NumberOfDecreasesToday': 0
+        },
+        'CreationDateTime': 1391471876.86,
+        'TableStatus': 'ACTIVE',
+        'AttributeDefinitions': [
+            {
+                'AttributeName': 'map_id',
+                'AttributeType': 'N'
+            }
+        ],
+        'KeySchema': [
+            {
+                'AttributeName': 'map_id', 'KeyType': 'HASH'
+            }
+        ],
+        'TableSizeBytes': 0
+    }
+}
+
+EXPLICIT_RAW_MAP_MODEL_AS_SUB_MAP_IN_TYPED_MAP_ITEM_DATA = {
+    'Item': {
+        'map_id': {
+            'N': '123'
+        },
+        'sub_attr': {
+            'M': {
+                'num_field': {'N': '37'},
+                'str_field': {'S': 'hi'},
+                'map_field': {
+                        'M': {
+                            'foo': {'S': 'bar'},
+                            'num': {'N': '1'},
+                            'bool_type': {'BOOL': True},
+                            'other_b_type': {'BOOL': False},
+                            'floaty': {'N': '1.2'},
+                            'listy': {'L': [{'N': '1'}, {'N': '2'}, {'N': '3'}]},
+                            'mapy': {'M': {'baz': {'S': 'bongo'}}}
+                        }
+                }
+            }
+        }
+    }
+}
+
+DOG_TABLE_DATA = {
+    "Table": {
+        "AttributeDefinitions": [
+            {
+                "AttributeName": "name",
+                "AttributeType": "S"
+            }
+        ],
+        "CreationDateTime": 1.363729002358E9,
+        "ItemCount": 42,
+        "KeySchema": [
+            {
+                "AttributeName": "name",
+                "KeyType": "HASH"
+            }
+        ],
+        "ProvisionedThroughput": {
+            "NumberOfDecreasesToday": 0,
+            "ReadCapacityUnits": 5,
+            "WriteCapacityUnits": 5
+        },
+        "TableName": "Dog",
+        "TableSizeBytes": 0,
+        "TableStatus": "ACTIVE"
+    }
+}

@@ -1,6 +1,342 @@
 Release Notes
 =============
 
+v3.1.0
+------
+
+:date: 2017-07-07
+
+This is a backwards compatible, minor release.
+
+Note that we now require ``botocore>=1.2.0``; this is required to support the 
+``consistent_read`` parameter when scanning.
+
+Calling ``Model.count()`` without a ``hash_key`` and *with* ``filters`` will
+raise a ``ValueError``, as it was previously returning incorrect results.
+
+New features in this release:
+
+* Add support for signals via blinker (#278)
+
+Fixes in this release:
+
+* Pass batch parameters down to boto/dynamo (#308)
+* Raise a ValueError if count() is invoked with no hash key AND filters (#313)
+* Add consistent_read parameter to Model.scan (#311)
+
+Contributors to this release:
+
+* @jmphilli
+* @Lordnibbler
+* @lita
+
+
+v3.0.1
+------
+
+:date: 2017-06-09
+
+This is a major release with breaking changes.
+
+``MapAttribute`` now allows pythonic access when recursively defined.
+If you were not using the ``attr_name=`` kwarg then you should have no problems upgrading.
+Previously defined non subclassed ``MapAttributes`` (raw ``MapAttributes``) that were members of a subclassed ``MapAttribute`` (typed ``MapAttributes``) would have to be accessed like a dictionary.
+Now object access is possible and recommended. See [here](https://github.com/pynamodb/PynamoDB/blob/master/pynamodb/tests/test_attributes.py#L671) for a test example.
+Access via the ``attr_name``, also known as the DynamoDB name, will now throw an ``AttributeError``.
+
+``UnicodeSetAttributes`` do not json serialize or deserialize anymore.
+We deprecated the functionality of json serializing as of ``1.6.0`` but left the deserialization functionality in there so people could migrate away from the old functionality. 
+If you have any ``UnicodeSetAttributes`` that have not been persisted since version ``1.6.0`` you will need to migrate your data or manage the json encoding and decoding with a custom attribute in application. 
+
+* Performance enhancements for the ``UTCDateTimeAttribute`` deserialize method. (#277)
+* There was a regression with attribute discovery. Fixes attribute discovery for model classes with inheritance (#280)
+* Fix to ignore null checks for batch delete (#283)
+* Fix for ``ListAttribute`` and ``MapAttribute`` serialize (#286)
+* Fix for ``MapAttribute`` pythonic access (#292) This is a breaking change.
+* Deprecated the json decode in ``UnicodeSetAttribute`` (#294) This is a breaking change.
+* Raise ``TableDoesNotExist`` error instead of letting json decoding ``ValueErrors`` raise (#296)
+
+Contributors to this release:
+
+* @jcbertin
+* @johnliu
+* @scode
+* @rowilla
+* @lita
+* @garretheel
+* @jmphilli
+
+v2.1.6
+------
+
+:date: 2017-05-10
+
+This is a backwards compatible, minor release.
+
+Fixes in this release:
+
+* Replace Delorean with dateutil (#208)
+* Fix a bug with count -- consume all pages in paginated response (#256)
+* Update mock lib (#262)
+* Use pytest instead of nose (#263)
+* Documentation changes (#269)
+* Fix null deserialization in MapAttributes (#272)
+
+Contributors to this release:
+
+* @funkybob
+* @garrettheel
+* @lita
+* @jmphilli
+
+
+v2.1.5
+------
+
+:date: 2017-03-16
+
+This is a backwards compatible, minor release.
+
+Fixes in this release:
+
+* Apply retry to ProvisionedThroughputExceeded (#222)
+* rate_limited_scan fix to handle consumed capacity (#235)
+* Fix for test when dict ordering differs (#237)
+
+Contributors to this release:
+
+* @anandswaminathan
+* @jasonfriedland
+* @JohnEmhoff
+
+
+v2.1.4
+------
+
+:date: 2017-02-14
+
+This is a minor release, with some changes to `MapAttribute` handling. Previously,
+when accessing a `MapAttribute` via `item.attr`, the type of the object used during
+instantiation would determine the return value. `Model(attr={...})` would return
+a `dict` on access. `Model(attr=MapAttribute(...))` would return an instance of
+`MapAttribute`. After #223, a `MapAttribute` will always be returned during
+item access regardless of the type of the object used during instantiation. For
+convenience, a `dict` version can be accessed using `.as_dict()` on the `MapAttribute`.
+
+New features in this release:
+
+* Support multiple attribute update (#194)
+* Rate-limited scan (#205)
+* Always create map attributes when setting a dict (#223)
+
+Fixes in this release:
+
+* Remove AttributeDict and require explicit attr names (#220)
+* Add distinct DoesNotExist classes per model (#206)
+* Ensure defaults are respected for MapAttribute (#221)
+* Add docs for GSI throughput changes (#224)
+
+Contributors to this release:
+
+* @anandswaminathan
+* @garrettheel
+* @ikonst
+* @jasonfriedland
+* @yedpodtrzitko
+
+
+v2.0.3
+------
+
+:date: 2016-11-18
+
+This is a backwards compatible, minor release.
+
+Fixes in this release:
+
+* Allow longs as members of maps + lists in python 2 (#200)
+* Allow raw map attributes in subclassed map attributes (#199)
+
+Contributors to this release:
+
+* @jmphilli
+
+
+v2.0.2
+------
+
+:date: 2016-11-10
+
+This is a backwards compatible, minor release.
+
+Fixes in this release:
+
+* add BOOL into SHORT_ATTR_TYPES (#190)
+* deserialize map attributes correctly (#192)
+* prepare request with requests session so session properties are applied (#197)
+
+Contributors to this release:
+
+* @anandswaminathan
+* @jmphilli
+* @yedpodtrzitko
+
+
+v2.0.1
+------
+
+:date: 2016-11-04
+
+This is a backwards compatible, minor release.
+
+Fixes in this release:
+
+* make "unprocessed keys for batch operation" log at info level (#180)
+* fix RuntimeWarning during imp_load in custom settings file (#185)
+* allow unstructured map attributes (#186)
+
+Contributors to this release:
+
+* @danielhochman
+* @jmphilli
+* @bedge
+
+
+v2.0.0
+------
+
+:date: 2016-11-01
+
+This is a major release, which introduces support for native DynamoDB maps and lists. There are no
+changes which are expected to break backwards compatibility, but you should test extensively before
+upgrading in production due to the volume of changes.
+
+New features in this release:
+
+* Add support for native map and list attributes (#175)
+
+Contributors to this release:
+
+* @jmphilli
+* @berdim99
+
+
+v1.6.0
+------
+
+:date: 2016-10-20
+
+This is a minor release, with some changes to BinaryAttribute handling and new options for configuration.
+
+BooleanAttribute now uses the native API type "B". BooleanAttribute is also compatible with the legacy BooleanAttributes
+on read. On save, they will be rewritten with the native type. If you wish to avoid this behavior, you can continue
+to use LegacyBooleanAttribute. LegacyBooleanAttribute is also forward compatible with native boolean
+attributes to allow for migration.
+
+New features in this release:
+
+* Add support for native boolean attributes (#149)
+* Parse legacy and native bool in legacy bool (#158)
+* Allow override of settings from global configuration file (#147)
+
+Fixes in this release:
+
+* Serialize UnicodeSetAttributes correctly (#151)
+* Make update_item respect attr_name differences (#160)
+
+Contributors to this release:
+
+* @anandswaminathan
+* @jmphilli
+* @lita
+
+
+v1.5.3
+------
+
+:date: 2016-08-08
+
+This is a backwards compatible, minor release.
+
+Fixes in this release:
+
+* Introduce concept of page_size, separate from num items returned limit (#139)
+
+Contributors to this release:
+
+* @anandswaminathan
+
+
+v1.5.2
+------
+
+:date: 2016-06-23
+
+This is a backwards compatible, minor release.
+
+Fixes in this release:
+
+* Additional retry logic for HTTP Status Code 5xx, usually attributed to InternalServerError (#135)
+
+Contributors to this release:
+
+* @danielhochman
+
+
+v1.5.1
+------
+
+:date: 2016-05-11
+
+This is a backwards compatible, minor release.
+
+Fixes in this release:
+
+* Fix for binary attribute handling of unprocessed items data corruption affecting users of 1.5.0 (#126 fixes #125)
+
+Contributors to this release:
+
+* @danielhochman
+
+
+v1.5.0
+------
+
+:date: 2016-05-09
+
+This is a backwards compatible, minor release.
+
+Please consider the fix for limits before upgrading. Correcting for off-by-one when querying is
+no longer necessary.
+
+Fixes in this release:
+
+* Fix off-by-one error for limits when querying (#123 fixed #95)
+* Retry on ConnectionErrors and other types of RequestExceptions (#121 fixes #98)
+* More verbose logging when receiving errors e.g. InternalServerError from the DynamoDB API (#115)
+* Prevent permanent poisoning of credential cache due to botocore bug (#113 fixes #99)
+* Fix for UnprocessedItems serialization error (#114 fixes #103)
+* Fix parsing issue with newer version of dateutil and UTCDateTimeAttributes (#110 fixes #109)
+* Correctly handle expected value generation for set types (#107 fixes #102)
+* Use HTTP proxies configured by botocore (#100 fixes #92)
+
+New features in this release:
+
+* Return the cause of connection exceptions to the caller (#108 documented by #112)
+* Configurable session class for custom connection pool size, etc (#91)
+* Add attributes_to_get and consistent_read to more of the API (#79)
+
+Contributors to this release:
+
+* @ab
+* @danielhochman
+* @jlafon
+* @joshowen
+* @jpinner-lyft
+* @mxr
+* @nickgravgaard
+
+
 v1.4.4
 ------
 
@@ -143,7 +479,7 @@ This is a backward compatible, minor bug fix release, fixing the following issue
 Other minor improvements
 
 * New API for backing up and restoring tables
-* Better support for custom attributes (https://github.com/jlafon/PynamoDB/commit/0c2ba5894a532ed14b6c14e5059e97dbb653ff12)
+* Better support for custom attributes (https://github.com/pynamodb/PynamoDB/commit/0c2ba5894a532ed14b6c14e5059e97dbb653ff12)
 * Explicit Travis CI testing of Python 2.6, 2.7, 3.3, 3.4, and PyPy
 * Tests added for round tripping unicode values
 

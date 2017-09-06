@@ -24,6 +24,7 @@ doc/
 .project
 .DS_Store
 .idea
+*.egg-info
 
 # Ignore auto-save files
 [#]*[#]
@@ -43,8 +44,8 @@ pip-log.txt
 
 # Unit test / coverage reports
 .coverage
+cover/
 .tox
-nosetests.xml
 
 # Translations
 *.mo
@@ -53,3 +54,9 @@ nosetests.xml
 .mr.developer.cfg
 .project
 .pydevproject
+
+# PyCharm
+.idea/
+
+# Ignore Cache
+.cache/

@@ -1,6 +1,7 @@
 """
 Test model API
 """
+import base64
 import random
 import json
 import copy
@@ -8,31 +9,45 @@ from datetime import datetime
 
 import six
 from botocore.client import ClientError
+from botocore.vendored import requests
+import pytest
 
 from pynamodb.compat import CompatTestCase as TestCase
 from pynamodb.tests.deep_eq import deep_eq
 from pynamodb.throttle import Throttle
 from pynamodb.connection.util import pythonic
-from pynamodb.exceptions import TableError
+from pynamodb.exceptions import DoesNotExist, TableError
 from pynamodb.types import RANGE
 from pynamodb.constants import (
     ITEM, STRING_SHORT, ALL, KEYS_ONLY, INCLUDE, REQUEST_ITEMS, UNPROCESSED_KEYS, ITEM_COUNT,
-    RESPONSES, KEYS, ITEMS, LAST_EVALUATED_KEY, EXCLUSIVE_START_KEY, ATTRIBUTES, BINARY_SHORT
+    RESPONSES, KEYS, ITEMS, LAST_EVALUATED_KEY, EXCLUSIVE_START_KEY, ATTRIBUTES, BINARY_SHORT,
+    UNPROCESSED_ITEMS, DEFAULT_ENCODING, MAP_SHORT, LIST_SHORT, NUMBER_SHORT
 )
-from pynamodb.models import Model
+from pynamodb.models import Model, ResultSet
 from pynamodb.indexes import (
     GlobalSecondaryIndex, LocalSecondaryIndex, AllProjection,
     IncludeProjection, KeysOnlyProjection, Index
 )
 from pynamodb.attributes import (
     UnicodeAttribute, NumberAttribute, BinaryAttribute, UTCDateTimeAttribute,
-    UnicodeSetAttribute, NumberSetAttribute, BinarySetAttribute)
+    UnicodeSetAttribute, NumberSetAttribute, BinarySetAttribute, MapAttribute,
+    BooleanAttribute, ListAttribute)
 from pynamodb.tests.data import (
     MODEL_TABLE_DATA, GET_MODEL_ITEM_DATA, SIMPLE_MODEL_TABLE_DATA,
     BATCH_GET_ITEMS, SIMPLE_BATCH_GET_ITEMS, COMPLEX_TABLE_DATA,
-    COMPLEX_ITEM_DATA, INDEX_TABLE_DATA, LOCAL_INDEX_TABLE_DATA,
+    COMPLEX_ITEM_DATA, INDEX_TABLE_DATA, LOCAL_INDEX_TABLE_DATA, DOG_TABLE_DATA,
     CUSTOM_ATTR_NAME_INDEX_TABLE_DATA, CUSTOM_ATTR_NAME_ITEM_DATA,
-    BINARY_ATTR_DATA, SERIALIZED_TABLE_DATA
+    BINARY_ATTR_DATA, SERIALIZED_TABLE_DATA, OFFICE_EMPLOYEE_MODEL_TABLE_DATA,
+    GET_OFFICE_EMPLOYEE_ITEM_DATA, GET_OFFICE_EMPLOYEE_ITEM_DATA_WITH_NULL,
+    GROCERY_LIST_MODEL_TABLE_DATA, GET_GROCERY_LIST_ITEM_DATA,
+    GET_OFFICE_ITEM_DATA, OFFICE_MODEL_TABLE_DATA, COMPLEX_MODEL_TABLE_DATA, COMPLEX_MODEL_ITEM_DATA,
+    CAR_MODEL_TABLE_DATA, FULL_CAR_MODEL_ITEM_DATA, CAR_MODEL_WITH_NULL_ITEM_DATA, INVALID_CAR_MODEL_WITH_NULL_ITEM_DATA,
+    BOOLEAN_CONVERSION_MODEL_TABLE_DATA,
+    BOOLEAN_CONVERSION_MODEL_NEW_STYLE_FALSE_ITEM_DATA, BOOLEAN_CONVERSION_MODEL_NEW_STYLE_TRUE_ITEM_DATA,
+    BOOLEAN_CONVERSION_MODEL_OLD_STYLE_FALSE_ITEM_DATA, BOOLEAN_CONVERSION_MODEL_OLD_STYLE_TRUE_ITEM_DATA,
+    BOOLEAN_CONVERSION_MODEL_TABLE_DATA_OLD_STYLE, TREE_MODEL_TABLE_DATA, TREE_MODEL_ITEM_DATA,
+    EXPLICIT_RAW_MAP_MODEL_TABLE_DATA, EXPLICIT_RAW_MAP_MODEL_ITEM_DATA,
+    EXPLICIT_RAW_MAP_MODEL_AS_SUB_MAP_IN_TYPED_MAP_ITEM_DATA, EXPLICIT_RAW_MAP_MODEL_AS_SUB_MAP_IN_TYPED_MAP_TABLE_DATA
 )
 
 if six.PY3:
@@ -175,6 +190,8 @@ class SimpleUserModel(Model):
     custom_aliases = UnicodeSetAttribute(attr_name='aliases')
     icons = BinarySetAttribute()
     views = NumberAttribute(null=True)
+    is_active = BooleanAttribute(null=True)
+    signature = UnicodeAttribute(null=True)
 
 
 class ThrottledUserModel(Model):
@@ -269,10 +286,185 @@ class ComplexKeyModel(Model):
     date_created = UTCDateTimeAttribute(default=datetime.utcnow)
 
 
+class Location(MapAttribute):
+
+    lat = NumberAttribute(attr_name='latitude')
+    lng = NumberAttribute(attr_name='longitude')
+    name = UnicodeAttribute()
+
+
+class Person(MapAttribute):
+
+    fname = UnicodeAttribute(attr_name='firstName')
+    lname = UnicodeAttribute(null=True)
+    age = NumberAttribute(null=True)
+    is_male = BooleanAttribute(attr_name='is_dude')
+
+    def foo(self):
+        return 1
+
+
+class ComplexModel(Model):
+    class Meta:
+        table_name = 'ComplexModel'
+    person = Person(attr_name='weird_person')
+    key = NumberAttribute(hash_key=True)
+
+
+class OfficeEmployee(Model):
+    class Meta:
+        table_name = 'OfficeEmployeeModel'
+
+    office_employee_id = NumberAttribute(hash_key=True)
+    person = Person()
+    office_location = Location()
+
+    def foo(self):
+        return 1
+
+
+class CarInfoMap(MapAttribute):
+    make = UnicodeAttribute(null=False)
+    model = UnicodeAttribute(null=True)
+
+
+class CarModel(Model):
+    class Meta:
+        table_name = 'CarModel'
+    car_id = NumberAttribute(null=False)
+    car_info = CarInfoMap(null=False)
+
+
+class CarModelWithNull(Model):
+    class Meta:
+        table_name = 'CarModelWithNull'
+    car_id = NumberAttribute(null=False)
+    car_color = UnicodeAttribute(null=True)
+    car_info = CarInfoMap(null=True)
+
+
+class OfficeEmployeeMap(MapAttribute):
+
+    office_employee_id = NumberAttribute()
+    person = Person()
+    office_location = Location()
+
+    def cool_function(self):
+        return 1
+
+
+class GroceryList(Model):
+    class Meta:
+        table_name = 'GroceryListModel'
+
+    store_name = UnicodeAttribute(hash_key=True)
+    groceries = ListAttribute()
+
+
+class Office(Model):
+    class Meta:
+        table_name = 'OfficeModel'
+    office_id = NumberAttribute(hash_key=True)
+    address = Location()
+    employees = ListAttribute(of=OfficeEmployeeMap)
+
+
+class BooleanConversionModel(Model):
+    class Meta:
+        table_name = 'BooleanConversionTable'
+
+    user_name = UnicodeAttribute(hash_key=True)
+    is_human = BooleanAttribute()
+
+
+class TreeLeaf2(MapAttribute):
+    value = NumberAttribute()
+
+
+class TreeLeaf1(MapAttribute):
+    value = NumberAttribute()
+    left = TreeLeaf2()
+    right = TreeLeaf2()
+
+
+class TreeLeaf(MapAttribute):
+    value = NumberAttribute()
+    left = TreeLeaf1()
+    right = TreeLeaf1()
+
+
+class TreeModel(Model):
+    class Meta:
+        table_name = 'TreeModelTable'
+
+    tree_key = UnicodeAttribute(hash_key=True)
+    left = TreeLeaf()
+    right = TreeLeaf()
+
+
+class ExplicitRawMapModel(Model):
+    class Meta:
+        table_name = 'ExplicitRawMapModel'
+    map_id = NumberAttribute(hash_key=True, default=123)
+    map_attr = MapAttribute()
+
+
+class MapAttrSubClassWithRawMapAttr(MapAttribute):
+    num_field = NumberAttribute()
+    str_field = UnicodeAttribute()
+    map_field = MapAttribute()
+
+
+class ExplicitRawMapAsMemberOfSubClass(Model):
+    class Meta:
+        table_name = 'ExplicitRawMapAsMemberOfSubClass'
+    map_id = NumberAttribute(hash_key=True)
+    sub_attr = MapAttrSubClassWithRawMapAttr()
+
+
+class OverriddenSession(requests.Session):
+    """
+    A overridden session for test
+    """
+    def __init__(self):
+        super(OverriddenSession, self).__init__()
+
+
+class OverriddenSessionModel(Model):
+    """
+    A testing model
+    """
+    class Meta:
+        table_name = 'OverriddenSessionModel'
+        request_timeout_seconds = 9999
+        max_retry_attempts = 200
+        base_backoff_ms = 4120
+        session_cls = OverriddenSession
+
+    random_user_name = UnicodeAttribute(hash_key=True, attr_name='random_name_1')
+    random_attr = UnicodeAttribute(attr_name='random_attr_1', null=True)
+
+
+class Animal(Model):
+    name = UnicodeAttribute(hash_key=True)
+
+
+class Dog(Animal):
+    class Meta:
+        table_name = 'Dog'
+
+    breed = UnicodeAttribute()
+
+
 class ModelTestCase(TestCase):
     """
     Tests for the models API
     """
+    @staticmethod
+    def init_table_meta(model_clz, table_data):
+        with patch(PATCH_METHOD) as req:
+            req.return_value = table_data
+            model_clz._get_meta_data()
 
     def assert_dict_lists_equal(self, list1, list2):
         """
@@ -321,6 +513,17 @@ class ModelTestCase(TestCase):
 
         # Test for default region
         self.assertEqual(UserModel.Meta.region, 'us-east-1')
+        self.assertEqual(UserModel.Meta.request_timeout_seconds, 60)
+        self.assertEqual(UserModel.Meta.max_retry_attempts, 3)
+        self.assertEqual(UserModel.Meta.base_backoff_ms, 25)
+        self.assertTrue(UserModel.Meta.session_cls is requests.Session)
+
+        self.assertEqual(UserModel._connection.connection._request_timeout_seconds, 60)
+        self.assertEqual(UserModel._connection.connection._max_retry_attempts_exception, 3)
+        self.assertEqual(UserModel._connection.connection._base_backoff_ms, 25)
+
+        self.assertTrue(type(UserModel._connection.connection.requests_session) is requests.Session)
+
         with patch(PATCH_METHOD) as req:
             req.return_value = MODEL_TABLE_DATA
             UserModel.create_table(read_capacity_units=2, write_capacity_units=2)
@@ -397,7 +600,7 @@ class ModelTestCase(TestCase):
             self.assertEquals(actual['TableName'], params['TableName'])
             self.assertEquals(actual['ProvisionedThroughput'], params['ProvisionedThroughput'])
             self.assert_dict_lists_equal(sorted(actual['KeySchema'], key=lambda x: x['AttributeName']),
-                                         sorted(actual['KeySchema'], key=lambda x: x['AttributeName']))
+                                         sorted(params['KeySchema'], key=lambda x: x['AttributeName']))
             # These come in random order
             self.assert_dict_lists_equal(sorted(actual['AttributeDefinitions'], key=lambda x: x['AttributeName']),
                                          sorted(params['AttributeDefinitions'], key=lambda x: x['AttributeName']))
@@ -468,6 +671,37 @@ class ModelTestCase(TestCase):
         self.assert_dict_lists_equal(correct_schema['KeySchema'], schema['key_schema'])
         self.assert_dict_lists_equal(correct_schema['AttributeDefinitions'], schema['attribute_definitions'])
 
+    def test_overidden_session(self):
+        """
+        Custom session
+        """
+        fake_db = MagicMock()
+
+        with patch(PATCH_METHOD, new=fake_db):
+            with patch("pynamodb.connection.TableConnection.describe_table") as req:
+                req.return_value = None
+                with self.assertRaises(TableError):
+                    OverriddenSessionModel.create_table(read_capacity_units=2, write_capacity_units=2, wait=True)
+
+        self.assertEqual(OverriddenSessionModel.Meta.request_timeout_seconds, 9999)
+        self.assertEqual(OverriddenSessionModel.Meta.max_retry_attempts, 200)
+        self.assertEqual(OverriddenSessionModel.Meta.base_backoff_ms, 4120)
+        self.assertTrue(OverriddenSessionModel.Meta.session_cls is OverriddenSession)
+
+        self.assertEqual(OverriddenSessionModel._connection.connection._request_timeout_seconds, 9999)
+        self.assertEqual(OverriddenSessionModel._connection.connection._max_retry_attempts_exception, 200)
+        self.assertEqual(OverriddenSessionModel._connection.connection._base_backoff_ms, 4120)
+        self.assertTrue(type(OverriddenSessionModel._connection.connection.requests_session) is OverriddenSession)
+
+    def test_overridden_attr_name(self):
+        user = UserModel(custom_user_name="bob")
+        self.assertEqual(user.custom_user_name, "bob")
+        self.assertRaises(AttributeError, getattr, user, "user_name")
+
+        self.assertRaises(ValueError, UserModel, user_name="bob")
+
+        self.assertRaises(ValueError, list, CustomAttrNameModel.query("bob", foo_attr="bar"))
+
     def test_refresh(self):
         """
         Model.refresh
@@ -484,7 +718,7 @@ class ModelTestCase(TestCase):
             req.return_value = GET_MODEL_ITEM_DATA
             item.refresh()
             self.assertEqual(
-                item.user_name,
+                item.custom_user_name,
                 GET_MODEL_ITEM_DATA.get(ITEM).get('user_name').get(STRING_SHORT))
 
     def test_complex_key(self):
@@ -528,7 +762,7 @@ class ModelTestCase(TestCase):
 
         with patch(PATCH_METHOD) as req:
             req.return_value = None
-            item.delete(user_id='bar')
+            item.delete(UserModel.user_id =='bar')
             params = {
                 'Key': {
                     'user_id': {
@@ -538,9 +772,13 @@ class ModelTestCase(TestCase):
                         'S': 'foo'
                     }
                 },
-                'Expected': {
-                    'user_id': {
-                        'Value': {'S': 'bar'},
+                'ConditionExpression': '#0 = :0',
+                'ExpressionAttributeNames': {
+                    '#0': 'user_id'
+                },
+                'ExpressionAttributeValues': {
+                    ':0': {
+                        'S': 'bar'
                     }
                 },
                 'ReturnConsumedCapacity': 'TOTAL',
@@ -561,9 +799,40 @@ class ModelTestCase(TestCase):
                         'S': 'foo'
                     }
                 },
-                'Expected': {
+                'ConditionExpression': '#0 = :0',
+                'ExpressionAttributeNames': {
+                    '#0': 'user_id'
+                },
+                'ExpressionAttributeValues': {
+                    ':0': {
+                        'S': 'bar'
+                    }
+                },
+                'ReturnConsumedCapacity': 'TOTAL',
+                'TableName': 'UserModel'
+            }
+            args = req.call_args[0][1]
+            deep_eq(args, params, _assert=True)
+
+        with patch(PATCH_METHOD) as req:
+            req.return_value = None
+            item.delete(UserModel.user_id == 'bar')
+            params = {
+                'Key': {
                     'user_id': {
-                        'Value': {'S': 'bar'},
+                        'S': 'bar'
+                    },
+                    'user_name': {
+                        'S': 'foo'
+                    }
+                },
+                'ConditionExpression': '#0 = :0',
+                'ExpressionAttributeNames': {
+                    '#0': 'user_id'
+                },
+                'ExpressionAttributeValues': {
+                    ':0': {
+                        'S': 'bar'
                     }
                 },
                 'ReturnConsumedCapacity': 'TOTAL',
@@ -571,6 +840,64 @@ class ModelTestCase(TestCase):
             }
             args = req.call_args[0][1]
             self.assertEqual(args, params)
+
+        with patch(PATCH_METHOD) as req:
+            req.return_value = None
+            item.delete(user_id='bar')
+            params = {
+                'Key': {
+                    'user_id': {
+                        'S': 'bar'
+                    },
+                    'user_name': {
+                        'S': 'foo'
+                    }
+                },
+                'ConditionExpression': '#0 = :0',
+                'ExpressionAttributeNames': {
+                    '#0': 'user_id'
+                },
+                'ExpressionAttributeValues': {
+                    ':0': {
+                        'S': 'bar'
+                    }
+                },
+                'ReturnConsumedCapacity': 'TOTAL',
+                'TableName': 'UserModel'
+            }
+            args = req.call_args[0][1]
+            self.assertEqual(args, params)
+
+        with patch(PATCH_METHOD) as req:
+            req.return_value = None
+            item.delete((UserModel.user_id == 'bar') & UserModel.email.contains('@'))
+            params = {
+                'Key': {
+                    'user_id': {
+                        'S': 'bar'
+                    },
+                    'user_name': {
+                        'S': 'foo'
+                    }
+                },
+                'ConditionExpression': '(#0 = :0 AND contains (#1, :1))',
+                'ExpressionAttributeNames': {
+                    '#0': 'user_id',
+                    '#1': 'email'
+                },
+                'ExpressionAttributeValues': {
+                    ':0': {
+                        'S': 'bar'
+                    },
+                    ':1': {
+                        'S': '@'
+                    }
+                },
+                'ReturnConsumedCapacity': 'TOTAL',
+                'TableName': 'UserModel'
+            }
+            args = req.call_args[0][1]
+            deep_eq(args, params, _assert=True)
 
         with patch(PATCH_METHOD) as req:
             req.return_value = None
@@ -584,25 +911,112 @@ class ModelTestCase(TestCase):
                         'S': 'foo'
                     }
                 },
-                'Expected': {
-                    'email': {
-                        'AttributeValueList': [
-                            {'S': '@'}
-                        ],
-                        'ComparisonOperator': 'CONTAINS'
+                'ConditionExpression': '(contains (#0, :0) AND #1 = :1)',
+                'ExpressionAttributeNames': {
+                    '#0': 'email',
+                    '#1': 'user_id'
+                },
+                'ExpressionAttributeValues': {
+                    ':0': {
+                        'S': '@'
                     },
-                    'user_id': {
-                        'Value': {
-                            'S': 'bar'
-                        }
+                    ':1': {
+                        'S': 'bar'
                     }
                 },
-                'ConditionalOperator': 'AND',
                 'ReturnConsumedCapacity': 'TOTAL',
                 'TableName': 'UserModel'
             }
             args = req.call_args[0][1]
             deep_eq(args, params, _assert=True)
+
+    def test_delete_doesnt_do_validation_on_null_attributes(self):
+        """
+        Model.delete
+        """
+        with patch(PATCH_METHOD) as req:
+            req.return_value = CAR_MODEL_TABLE_DATA
+            CarModel('foo').delete()
+
+        with patch(PATCH_METHOD) as req:
+            req.return_value = CAR_MODEL_TABLE_DATA
+            with CarModel.batch_write() as batch:
+                car = CarModel('foo')
+                batch.delete(car)
+
+    def test_update(self):
+        """
+        Model.update
+        """
+        with patch(PATCH_METHOD) as req:
+            req.return_value = SIMPLE_MODEL_TABLE_DATA
+            item = SimpleUserModel('foo', is_active=True, email='foo@example.com', signature='foo')
+
+        with patch(PATCH_METHOD) as req:
+            req.return_value = {}
+            item.save()
+
+        self.assertRaises(TypeError, item.update, ["not", "a", "dict"])
+
+        with patch(PATCH_METHOD) as req:
+            req.return_value = {
+                ATTRIBUTES: {
+                    "email": {
+                        "S": "foo@example.com",
+                    },
+                    "is_active": {
+                        "NULL": None,
+                    },
+                    "aliases": {
+                        "SS": set(["bob"]),
+                    }
+                }
+            }
+            item.update({
+                'email': {'value': 'foo@example.com', 'action': 'put'},
+                'views': {'action': 'delete'},
+                'is_active': {'value': None, 'action': 'put'},
+                'signature': {'value': None, 'action': 'put'},
+                'custom_aliases': {'value': set(['bob']), 'action': 'put'},
+            })
+
+            args = req.call_args[0][1]
+            params = {
+                'TableName': 'SimpleModel',
+                'ReturnValues': 'ALL_NEW',
+                'Key': {
+                    'user_name': {
+                        'S': 'foo'
+                    }
+                },
+                'UpdateExpression': 'SET #0 = :0, #1 = :1, #2 = :2, #3 = :3 REMOVE #4',
+                'ExpressionAttributeNames': {
+                    '#0': 'aliases',
+                    '#1': 'email',
+                    '#2': 'is_active',
+                    '#3': 'signature',
+                    '#4': 'views'
+                },
+                'ExpressionAttributeValues': {
+                    ':0': {
+                        'SS': set(['bob'])
+                    },
+                    ':1': {
+                        'S': 'foo@example.com',
+                    },
+                    ':2': {
+                        'NULL': True
+                    },
+                    ':3': {
+                        'NULL': True
+                    }
+                },
+                'ReturnConsumedCapacity': 'TOTAL'
+            }
+            deep_eq(args, params, _assert=True)
+
+            assert item.views is None
+            self.assertEquals(set(['bob']), item.custom_aliases)
 
     def test_update_item(self):
         """
@@ -626,6 +1040,9 @@ class ModelTestCase(TestCase):
             }
             self.assertRaises(ValueError, item.update_item, 'views', 10)
 
+        self.assertRaises(ValueError, item.update_item, 'nonexistent', 5)
+        self.assertRaises(ValueError, item.update_item, 'views', 10, action='add', nonexistent__not_contains='-')
+
         with patch(PATCH_METHOD) as req:
             req.return_value = {
                 ATTRIBUTES: {
@@ -644,12 +1061,55 @@ class ModelTestCase(TestCase):
                         'S': 'foo'
                     }
                 },
-                'AttributeUpdates': {
-                    'views': {
-                        'Action': 'ADD',
-                        'Value': {
-                            'N': '10'
-                        }
+                'UpdateExpression': 'ADD #0 :0',
+                'ExpressionAttributeNames': {
+                    '#0': 'views'
+                },
+                'ExpressionAttributeValues': {
+                    ':0': {
+                        'N': '10'
+                    }
+                },
+                'ReturnConsumedCapacity': 'TOTAL'
+            }
+            deep_eq(args, params, _assert=True)
+
+        with patch(PATCH_METHOD) as req:
+            req.return_value = {
+                ATTRIBUTES: {
+                    "views": {
+                        "N": "10"
+                    }
+                }
+            }
+            item.update_item('views', 10, action='add', condition=(
+                (SimpleUserModel.user_name == 'foo') & ~SimpleUserModel.email.contains('@')
+            ))
+            args = req.call_args[0][1]
+            params = {
+                'TableName': 'SimpleModel',
+                'ReturnValues': 'ALL_NEW',
+                'Key': {
+                    'user_name': {
+                        'S': 'foo'
+                    }
+                },
+                'ConditionExpression': '(#0 = :0 AND (NOT contains (#1, :1)))',
+                'UpdateExpression': 'ADD #2 :2',
+                'ExpressionAttributeNames': {
+                    '#0': 'user_name',
+                    '#1': 'email',
+                    '#2': 'views'
+                },
+                'ExpressionAttributeValues': {
+                    ':0': {
+                        'S': 'foo'
+                    },
+                    ':1': {
+                        'S': '@'
+                    },
+                    ':2': {
+                        'N': '10'
                     }
                 },
                 'ReturnConsumedCapacity': 'TOTAL'
@@ -674,23 +1134,55 @@ class ModelTestCase(TestCase):
                         'S': 'foo'
                     }
                 },
-                'Expected': {
-                    'user_name': {
-                        'Value': {'S': 'foo'}
-                    },
-                    'email': {
-                        'AttributeValueList': [
-                            {'S': '@'}
-                        ],
-                        'ComparisonOperator': 'NOT_CONTAINS'
-                    },
+                'ConditionExpression': '((NOT contains (#1, :1)) AND #2 = :2)',
+                'UpdateExpression': 'ADD #0 :0',
+                'ExpressionAttributeNames': {
+                    '#0': 'views',
+                    '#1': 'email',
+                    '#2': 'user_name'
                 },
-                'AttributeUpdates': {
-                    'views': {
-                        'Action': 'ADD',
-                        'Value': {
-                            'N': '10'
-                        }
+                'ExpressionAttributeValues': {
+                    ':0': {
+                        'N': '10'
+                    },
+                    ':1': {
+                        'S': '@'
+                    },
+                    ':2': {
+                        'S': 'foo'
+                    }
+                },
+                'ReturnConsumedCapacity': 'TOTAL'
+            }
+            deep_eq(args, params, _assert=True)
+
+        with patch(PATCH_METHOD) as req:
+            req.return_value = {
+                ATTRIBUTES: {
+                    "views": {
+                        "N": "10"
+                    }
+                }
+            }
+            item.update_item('views', 10, action='add', condition=SimpleUserModel.user_name.does_not_exist())
+            args = req.call_args[0][1]
+            params = {
+                'TableName': 'SimpleModel',
+                'ReturnValues': 'ALL_NEW',
+                'Key': {
+                    'user_name': {
+                        'S': 'foo'
+                    }
+                },
+                'ConditionExpression': 'attribute_not_exists (#0)',
+                'UpdateExpression': 'ADD #1 :0',
+                'ExpressionAttributeNames': {
+                    '#0': 'user_name',
+                    '#1': 'views'
+                },
+                'ExpressionAttributeValues': {
+                    ':0': {
+                        'N': '10'
                     }
                 },
                 'ReturnConsumedCapacity': 'TOTAL'
@@ -715,22 +1207,22 @@ class ModelTestCase(TestCase):
                         'S': 'foo'
                     }
                 },
-                'Expected': {
-                    'user_name': {'Exists': False}
+                'ConditionExpression': 'attribute_not_exists (#1)',
+                'UpdateExpression': 'ADD #0 :0',
+                'ExpressionAttributeNames': {
+                    '#0': 'views',
+                    '#1': 'user_name'
                 },
-                'AttributeUpdates': {
-                    'views': {
-                        'Action': 'ADD',
-                        'Value': {
-                            'N': '10'
-                        }
+                'ExpressionAttributeValues': {
+                    ':0': {
+                        'N': '10'
                     }
                 },
                 'ReturnConsumedCapacity': 'TOTAL'
             }
             deep_eq(args, params, _assert=True)
 
-        # Reproduces https://github.com/jlafon/PynamoDB/issues/59
+        # Reproduces https://github.com/pynamodb/PynamoDB/issues/59
         with patch(PATCH_METHOD) as req:
             user = UserModel("test_hash", "test_range")
             req.return_value = {
@@ -740,8 +1232,14 @@ class ModelTestCase(TestCase):
             args = req.call_args[0][1]
 
             params = {
-                'AttributeUpdates': {
-                    'zip_code': {'Action': 'ADD', 'Value': {'N': '10'}}
+                'UpdateExpression': 'ADD #0 :0',
+                'ExpressionAttributeNames': {
+                    '#0': 'zip_code'
+                },
+                'ExpressionAttributeValues': {
+                    ':0': {
+                        'N': '10'
+                    }
                 },
                 'TableName': 'UserModel',
                 'ReturnValues': 'ALL_NEW',
@@ -760,7 +1258,7 @@ class ModelTestCase(TestCase):
                     }
                 }
             }
-            # Reproduces https://github.com/jlafon/PynamoDB/issues/34
+            # Reproduces https://github.com/pynamodb/PynamoDB/issues/34
             item.email = None
             item.update_item('views', 10, action='add')
             args = req.call_args[0][1]
@@ -772,12 +1270,13 @@ class ModelTestCase(TestCase):
                         'S': 'foo'
                     }
                 },
-                'AttributeUpdates': {
-                    'views': {
-                        'Action': 'ADD',
-                        'Value': {
-                            'N': '10'
-                        }
+                'UpdateExpression': 'ADD #0 :0',
+                'ExpressionAttributeNames': {
+                    '#0': 'views'
+                },
+                'ExpressionAttributeValues': {
+                    ':0': {
+                        'N': '10'
                     }
                 },
                 'ReturnConsumedCapacity': 'TOTAL'
@@ -800,14 +1299,222 @@ class ModelTestCase(TestCase):
                         'S': 'foo'
                     }
                 },
-                'AttributeUpdates': {
-                    'views': {
-                        'Action': 'DELETE',
+                'UpdateExpression': 'REMOVE #0',
+                'ExpressionAttributeNames': {
+                    '#0': 'views'
+                },
+                'ReturnConsumedCapacity': 'TOTAL'
+            }
+            deep_eq(args, params, _assert=True)
+
+        with patch(PATCH_METHOD) as req:
+            req.return_value = {
+                ATTRIBUTES: {
+                    "views": {
+                        "N": "10"
+                    }
+                }
+            }
+            item.update_item('views', 10, action='add', condition=SimpleUserModel.numbers == [1, 2])
+            args = req.call_args[0][1]
+            params = {
+                'TableName': 'SimpleModel',
+                'ReturnValues': 'ALL_NEW',
+                'Key': {
+                    'user_name': {
+                        'S': 'foo'
+                    }
+                },
+                'ConditionExpression': '#0 = :0',
+                'UpdateExpression': 'ADD #1 :1',
+                'ExpressionAttributeNames': {
+                    '#0': 'numbers',
+                    '#1': 'views'
+                },
+                'ExpressionAttributeValues': {
+                    ':0': {
+                        'NS': ['1', '2']
+                    },
+                    ':1': {
+                        'N': '10'
                     }
                 },
                 'ReturnConsumedCapacity': 'TOTAL'
             }
             deep_eq(args, params, _assert=True)
+
+        with patch(PATCH_METHOD) as req:
+            req.return_value = {
+                ATTRIBUTES: {
+                    "views": {
+                        "N": "10"
+                    }
+                }
+            }
+            item.update_item('views', 10, action='add', numbers__eq=[1, 2])
+            args = req.call_args[0][1]
+            params = {
+                'TableName': 'SimpleModel',
+                'ReturnValues': 'ALL_NEW',
+                'Key': {
+                    'user_name': {
+                        'S': 'foo'
+                    }
+                },
+                'ConditionExpression': '#1 = :1',
+                'UpdateExpression': 'ADD #0 :0',
+                'ExpressionAttributeNames': {
+                    '#0': 'views',
+                    '#1': 'numbers'
+                },
+                'ExpressionAttributeValues': {
+                    ':0': {
+                        'N': '10'
+                    },
+                    ':1': {
+                        'NS': ['1', '2']
+                    }
+                },
+                'ReturnConsumedCapacity': 'TOTAL'
+            }
+            deep_eq(args, params, _assert=True)
+
+        # Reproduces https://github.com/pynamodb/PynamoDB/issues/102
+        with patch(PATCH_METHOD) as req:
+            req.return_value = {
+                ATTRIBUTES: {
+                    "views": {
+                        "N": "10"
+                    }
+                }
+            }
+            item.update_item('views', 10, action='add', condition=SimpleUserModel.email.is_in('1@pynamo.db','2@pynamo.db'))
+            args = req.call_args[0][1]
+            params = {
+                'TableName': 'SimpleModel',
+                'ReturnValues': 'ALL_NEW',
+                'Key': {
+                    'user_name': {
+                        'S': 'foo'
+                    }
+                },
+                'ConditionExpression': '#0 IN (:0, :1)',
+                'UpdateExpression': 'ADD #1 :2',
+                'ExpressionAttributeNames': {
+                    '#0': 'email',
+                    '#1': 'views'
+                },
+                'ExpressionAttributeValues': {
+                    ':0': {
+                        'S': '1@pynamo.db'
+                    },
+                    ':1': {
+                        'S': '2@pynamo.db'
+                    },
+                    ':2': {
+                        'N': '10'
+                    }
+                },
+                'ReturnConsumedCapacity': 'TOTAL'
+            }
+            deep_eq(args, params, _assert=True)
+
+        # Reproduces https://github.com/pynamodb/PynamoDB/issues/102
+        with patch(PATCH_METHOD) as req:
+            req.return_value = {
+                ATTRIBUTES: {
+                    "views": {
+                        "N": "10"
+                    }
+                }
+            }
+            item.update_item('views', 10, action='add', email__in=['1@pynamo.db','2@pynamo.db'])
+            args = req.call_args[0][1]
+            params = {
+                'TableName': 'SimpleModel',
+                'ReturnValues': 'ALL_NEW',
+                'Key': {
+                    'user_name': {
+                        'S': 'foo'
+                    }
+                },
+                'ConditionExpression': '#1 IN (:1, :2)',
+                'UpdateExpression': 'ADD #0 :0',
+                'ExpressionAttributeNames': {
+                    '#0': 'views',
+                    '#1': 'email'
+                },
+                'ExpressionAttributeValues': {
+                    ':0': {
+                        'N': '10'
+                    },
+                    ':1': {
+                        'S': '1@pynamo.db'
+                    },
+                    ':2': {
+                        'S': '2@pynamo.db'
+                    }
+                },
+                'ReturnConsumedCapacity': 'TOTAL'
+            }
+            deep_eq(args, params, _assert=True)
+
+        with patch(PATCH_METHOD) as req:
+            req.return_value = {
+                ATTRIBUTES: {
+                    "aliases": {
+                        "SS": set(["lita"])
+                    }
+                }
+            }
+            item.update_item('custom_aliases', set(['lita']), action='add')
+            args = req.call_args[0][1]
+            params = {
+                'TableName': 'SimpleModel',
+                'ReturnValues': 'ALL_NEW',
+                'Key': {
+                    'user_name': {
+                        'S': 'foo'
+                    }
+                },
+                'UpdateExpression': 'ADD #0 :0',
+                'ExpressionAttributeNames': {
+                    '#0': 'aliases'
+                },
+                'ExpressionAttributeValues': {
+                    ':0': {
+                        'SS': set(['lita'])
+                    }
+                },
+                'ReturnConsumedCapacity': 'TOTAL'
+            }
+            deep_eq(args, params, _assert=True)
+            self.assertEqual(set(["lita"]), item.custom_aliases)
+
+        with patch(PATCH_METHOD) as req:
+            item.update_item('is_active', True, action='put')
+            args = req.call_args[0][1]
+            params = {
+                'TableName': 'SimpleModel',
+                'ReturnValues': 'ALL_NEW',
+                'Key': {
+                    'user_name': {
+                        'S': 'foo'
+                    }
+                },
+                'UpdateExpression': 'SET #0 = :0',
+                'ExpressionAttributeNames': {
+                    '#0': 'is_active'
+                },
+                'ExpressionAttributeValues': {
+                    ':0': {
+                        'BOOL': True
+                    }
+                },
+                'ReturnConsumedCapacity': 'TOTAL'
+            }
+            deep_eq(args, params, _assert=True)
+
 
     def test_save(self):
         """
@@ -844,6 +1551,34 @@ class ModelTestCase(TestCase):
 
         with patch(PATCH_METHOD) as req:
             req.return_value = {}
+            item.save(UserModel.email.does_not_exist())
+            args = req.call_args[0][1]
+            params = {
+                'Item': {
+                    'callable_field': {
+                        'N': '42'
+                    },
+                    'email': {
+                        'S': u'needs_email'
+                    },
+                    'user_id': {
+                        'S': u'bar'
+                    },
+                    'user_name': {
+                        'S': u'foo'
+                    },
+                },
+                'ConditionExpression': 'attribute_not_exists (#0)',
+                'ExpressionAttributeNames': {
+                    '#0': 'email'
+                },
+                'ReturnConsumedCapacity': 'TOTAL',
+                'TableName': 'UserModel'
+            }
+            deep_eq(args, params, _assert=True)
+
+        with patch(PATCH_METHOD) as req:
+            req.return_value = {}
             item.save(email__exists=False)
             args = req.call_args[0][1]
             params = {
@@ -861,10 +1596,38 @@ class ModelTestCase(TestCase):
                         'S': u'foo'
                     },
                 },
-                'Expected': {
+                'ConditionExpression': 'attribute_not_exists (#0)',
+                'ExpressionAttributeNames': {
+                    '#0': 'email'
+                },
+                'ReturnConsumedCapacity': 'TOTAL',
+                'TableName': 'UserModel'
+            }
+            deep_eq(args, params, _assert=True)
+
+        with patch(PATCH_METHOD) as req:
+            req.return_value = {}
+            item.save(UserModel.email.does_not_exist() & UserModel.zip_code.exists())
+            args = req.call_args[0][1]
+            params = {
+                'Item': {
+                    'callable_field': {
+                        'N': '42'
+                    },
                     'email': {
-                        'Exists': False
-                    }
+                        'S': u'needs_email'
+                    },
+                    'user_id': {
+                        'S': u'bar'
+                    },
+                    'user_name': {
+                        'S': u'foo'
+                    },
+                },
+                'ConditionExpression': '(attribute_not_exists (#0) AND attribute_exists (#1))',
+                'ExpressionAttributeNames': {
+                    '#0': 'email',
+                    '#1': 'zip_code'
                 },
                 'ReturnConsumedCapacity': 'TOTAL',
                 'TableName': 'UserModel'
@@ -890,13 +1653,10 @@ class ModelTestCase(TestCase):
                         'S': u'foo'
                     },
                 },
-                'Expected': {
-                    'email': {
-                        'Exists': False
-                    },
-                    'zip_code': {
-                        'ComparisonOperator': 'NOT_NULL'
-                    }
+                'ConditionExpression': '(attribute_not_exists (#0) AND attribute_exists (#1))',
+                'ExpressionAttributeNames': {
+                    '#0': 'email',
+                    '#1': 'zip_code'
                 },
                 'ReturnConsumedCapacity': 'TOTAL',
                 'TableName': 'UserModel'
@@ -905,7 +1665,9 @@ class ModelTestCase(TestCase):
 
         with patch(PATCH_METHOD) as req:
             req.return_value = {}
-            item.save(user_name='bar', zip_code__null=True, email__contains='@', conditional_operator='OR')
+            item.save(
+                (UserModel.custom_user_name == 'bar') | UserModel.zip_code.does_not_exist() | UserModel.email.contains('@')
+            )
             args = req.call_args[0][1]
             params = {
                 'Item': {
@@ -922,19 +1684,89 @@ class ModelTestCase(TestCase):
                         'S': u'foo'
                     },
                 },
-                'ConditionalOperator': 'OR',
-                'Expected': {
-                    'user_name': {
-                        'Value': {'S': 'bar'}
+                'ConditionExpression': '((#0 = :0 OR attribute_not_exists (#1)) OR contains (#2, :1))',
+                'ExpressionAttributeNames': {
+                    '#0': 'user_name',
+                    '#1': 'zip_code',
+                    '#2': 'email'
+                },
+                'ExpressionAttributeValues': {
+                    ':0': {
+                        'S': 'bar'
                     },
-                    'zip_code': {
-                        'ComparisonOperator': 'NULL'
+                    ':1': {
+                        'S': '@'
+                    }
+                },
+                'ReturnConsumedCapacity': 'TOTAL',
+                'TableName': 'UserModel'
+            }
+            deep_eq(args, params, _assert=True)
+
+        with patch(PATCH_METHOD) as req:
+            req.return_value = {}
+            item.save(custom_user_name='bar', zip_code__null=True, email__contains='@', conditional_operator='OR')
+            args = req.call_args[0][1]
+            params = {
+                'Item': {
+                    'callable_field': {
+                        'N': '42'
                     },
                     'email': {
-                        'ComparisonOperator': 'CONTAINS',
-                        'AttributeValueList': [
-                            {'S': '@'}
-                        ]
+                        'S': u'needs_email'
+                    },
+                    'user_id': {
+                        'S': u'bar'
+                    },
+                    'user_name': {
+                        'S': u'foo'
+                    },
+                },
+                'ConditionExpression': '((contains (#0, :0) OR #1 = :1) OR attribute_not_exists (#2))',
+                'ExpressionAttributeNames': {
+                    '#0': 'email',
+                    '#1': 'user_name',
+                    '#2': 'zip_code'
+                },
+                'ExpressionAttributeValues': {
+                    ':0': {
+                        'S': '@'
+                    },
+                    ':1': {
+                        'S': 'bar'
+                    }
+                },
+                'ReturnConsumedCapacity': 'TOTAL',
+                'TableName': 'UserModel'
+            }
+            deep_eq(args, params, _assert=True)
+
+        with patch(PATCH_METHOD) as req:
+            req.return_value = {}
+            item.save(UserModel.custom_user_name == 'foo')
+            args = req.call_args[0][1]
+            params = {
+                'Item': {
+                    'callable_field': {
+                        'N': '42'
+                    },
+                    'email': {
+                        'S': u'needs_email'
+                    },
+                    'user_id': {
+                        'S': u'bar'
+                    },
+                    'user_name': {
+                        'S': u'foo'
+                    },
+                },
+                'ConditionExpression': '#0 = :0',
+                'ExpressionAttributeNames': {
+                    '#0': 'user_name'
+                },
+                'ExpressionAttributeValues': {
+                    ':0': {
+                        'S': 'foo'
                     }
                 },
                 'ReturnConsumedCapacity': 'TOTAL',
@@ -961,9 +1793,13 @@ class ModelTestCase(TestCase):
                         'S': u'foo'
                     },
                 },
-                'Expected': {
-                    'user_name': {
-                        'Value': {'S': 'foo'}
+                'ConditionExpression': '#0 = :0',
+                'ExpressionAttributeNames': {
+                    '#0': 'user_name'
+                },
+                'ExpressionAttributeValues': {
+                    ':0': {
+                        'S': 'foo'
                     }
                 },
                 'ReturnConsumedCapacity': 'TOTAL',
@@ -981,10 +1817,13 @@ class ModelTestCase(TestCase):
             self.assertEqual(res, 10)
             args = req.call_args[0][1]
             params = {
-                'KeyConditions': {
-                    'user_name': {
-                        'ComparisonOperator': 'EQ',
-                        'AttributeValueList': [{'S': u'foo'}]
+                'KeyConditionExpression': '#0 = :0',
+                'ExpressionAttributeNames': {
+                    '#0': 'user_name'
+                },
+                'ExpressionAttributeValues': {
+                    ':0': {
+                        'S': u'foo'
                     }
                 },
                 'TableName': 'UserModel',
@@ -1011,24 +1850,35 @@ class ModelTestCase(TestCase):
             params = {'TableName': 'UserModel'}
             self.assertEqual(args, params)
 
+    def test_count_no_hash_key(self):
+        with pytest.raises(ValueError):
+            UserModel.count(zip_code__le='94117')
+
     def test_index_count(self):
         """
         Model.index.count()
         """
         with patch(PATCH_METHOD) as req:
             req.return_value = {'Count': 42}
-            res = CustomAttrNameModel.uid_index.count('foo', limit=2, user_name__begins_with='bar')
+            res = CustomAttrNameModel.uid_index.count(
+                'foo',
+                CustomAttrNameModel.overidden_user_name.startswith('bar'),
+                limit=2)
             self.assertEqual(res, 42)
             args = req.call_args[0][1]
             params = {
-                'KeyConditions': {
-                    'user_name': {
-                        'ComparisonOperator': 'BEGINS_WITH',
-                        'AttributeValueList': [{'S': u'bar'}]
+                'KeyConditionExpression': '#0 = :0',
+                'FilterExpression': 'begins_with (#1, :1)',
+                'ExpressionAttributeNames': {
+                    '#0': 'user_id',
+                    '#1': 'user_name'
+                },
+                'ExpressionAttributeValues': {
+                    ':0': {
+                        'S': u'foo'
                     },
-                    'user_id': {
-                        'ComparisonOperator': 'EQ',
-                        'AttributeValueList': [{'S': u'foo'}]
+                    ':1': {
+                        'S': u'bar'
                     }
                 },
                 'Limit': 2,
@@ -1038,6 +1888,201 @@ class ModelTestCase(TestCase):
                 'Select': 'COUNT'
             }
             deep_eq(args, params, _assert=True)
+
+        # Note: this test is incorrect as uid_index does not have a range key
+        with patch(PATCH_METHOD) as req:
+            req.return_value = {'Count': 42}
+            res = CustomAttrNameModel.uid_index.count('foo', limit=2, overidden_user_name__begins_with='bar')
+            self.assertEqual(res, 42)
+            args = req.call_args[0][1]
+            params = {
+                'KeyConditionExpression': '(#0 = :0 AND begins_with (#1, :1))',
+                'ExpressionAttributeNames': {
+                    '#0': 'user_id',
+                    '#1': 'user_name'
+                },
+                'ExpressionAttributeValues': {
+                    ':0': {
+                        'S': u'foo'
+                    },
+                    ':1': {
+                        'S': u'bar'
+                    }
+                },
+                'Limit': 2,
+                'IndexName': 'uid_index',
+                'TableName': 'CustomAttrModel',
+                'ReturnConsumedCapacity': 'TOTAL',
+                'Select': 'COUNT'
+            }
+            deep_eq(args, params, _assert=True)
+
+    def test_index_multipage_count(self):
+        with patch(PATCH_METHOD) as req:
+            last_evaluated_key = {
+                'user_name': {'S': u'user'},
+                'user_id': {'S': '1234'},
+            }
+            req.side_effect = [
+                {'Count': 1000, 'LastEvaluatedKey': last_evaluated_key},
+                {'Count': 42}
+            ]
+            res = CustomAttrNameModel.uid_index.count('foo')
+            self.assertEqual(res, 1042)
+
+            args_one = req.call_args_list[0][0][1]
+            params_one = {
+                'KeyConditionExpression': '#0 = :0',
+                'ExpressionAttributeNames': {
+                    '#0': 'user_id'
+                },
+                'ExpressionAttributeValues': {
+                    ':0': {
+                        'S': u'foo'
+                    }
+                },
+                'IndexName': 'uid_index',
+                'TableName': 'CustomAttrModel',
+                'ReturnConsumedCapacity': 'TOTAL',
+                'Select': 'COUNT'
+            }
+
+            args_two = req.call_args_list[1][0][1]
+            params_two = copy.deepcopy(params_one)
+            params_two['ExclusiveStartKey'] = last_evaluated_key
+
+            deep_eq(args_one, params_one, _assert=True)
+            deep_eq(args_two, params_two, _assert=True)
+
+    def test_query_limit_greater_than_available_items_single_page(self):
+        with patch(PATCH_METHOD) as req:
+            req.return_value = MODEL_TABLE_DATA
+            UserModel('foo', 'bar')
+
+        with patch(PATCH_METHOD) as req:
+            items = []
+            for idx in range(5):
+                item = copy.copy(GET_MODEL_ITEM_DATA.get(ITEM))
+                item['user_id'] = {STRING_SHORT: 'id-{0}'.format(idx)}
+                items.append(item)
+
+            req.return_value = {'Items': items}
+            results = list(UserModel.query('foo', limit=25))
+            self.assertEqual(len(results), 5)
+            self.assertEquals(req.mock_calls[0][1][1]['Limit'], 25)
+
+    def test_query_limit_identical_to_available_items_single_page(self):
+        with patch(PATCH_METHOD) as req:
+            req.return_value = MODEL_TABLE_DATA
+            UserModel('foo', 'bar')
+
+        with patch(PATCH_METHOD) as req:
+            items = []
+            for idx in range(5):
+                item = copy.copy(GET_MODEL_ITEM_DATA.get(ITEM))
+                item['user_id'] = {STRING_SHORT: 'id-{0}'.format(idx)}
+                items.append(item)
+
+            req.return_value = {'Items': items}
+            results = list(UserModel.query('foo', limit=5))
+            self.assertEqual(len(results), 5)
+            self.assertEquals(req.mock_calls[0][1][1]['Limit'], 5)
+
+    def test_query_limit_less_than_available_items_multiple_page(self):
+        with patch(PATCH_METHOD) as req:
+            req.return_value = MODEL_TABLE_DATA
+            UserModel('foo', 'bar')
+
+        with patch(PATCH_METHOD) as req:
+            items = []
+            for idx in range(30):
+                item = copy.copy(GET_MODEL_ITEM_DATA.get(ITEM))
+                item['user_id'] = {STRING_SHORT: 'id-{0}'.format(idx)}
+                items.append(item)
+
+            req.side_effect = [
+                {'Items': items[:10], 'LastEvaluatedKey': 'x'},
+                {'Items': items[10:20], 'LastEvaluatedKey': 'y'},
+                {'Items': items[20:30]},
+            ]
+            results = list(UserModel.query('foo', limit=25))
+            self.assertEqual(len(results), 25)
+            self.assertEqual(len(req.mock_calls), 3)
+            self.assertEquals(req.mock_calls[0][1][1]['Limit'], 25)
+            self.assertEquals(req.mock_calls[1][1][1]['Limit'], 25)
+            self.assertEquals(req.mock_calls[2][1][1]['Limit'], 25)
+
+    def test_query_limit_less_than_available_and_page_size(self):
+        with patch(PATCH_METHOD) as req:
+            req.return_value = MODEL_TABLE_DATA
+            UserModel('foo', 'bar')
+
+        with patch(PATCH_METHOD) as req:
+            items = []
+            for idx in range(30):
+                item = copy.copy(GET_MODEL_ITEM_DATA.get(ITEM))
+                item['user_id'] = {STRING_SHORT: 'id-{0}'.format(idx)}
+                items.append(item)
+
+            req.side_effect = [
+                {'Items': items[:10], 'LastEvaluatedKey': 'x'},
+                {'Items': items[10:20], 'LastEvaluatedKey': 'y'},
+                {'Items': items[20:30]},
+            ]
+            results = list(UserModel.query('foo', limit=25, page_size=10))
+            self.assertEqual(len(results), 25)
+            self.assertEqual(len(req.mock_calls), 3)
+            self.assertEquals(req.mock_calls[0][1][1]['Limit'], 10)
+            self.assertEquals(req.mock_calls[1][1][1]['Limit'], 10)
+            self.assertEquals(req.mock_calls[2][1][1]['Limit'], 10)
+
+    def test_query_limit_greater_than_available_items_multiple_page(self):
+        with patch(PATCH_METHOD) as req:
+            req.return_value = MODEL_TABLE_DATA
+            UserModel('foo', 'bar')
+
+        with patch(PATCH_METHOD) as req:
+            items = []
+            for idx in range(30):
+                item = copy.copy(GET_MODEL_ITEM_DATA.get(ITEM))
+                item['user_id'] = {STRING_SHORT: 'id-{0}'.format(idx)}
+                items.append(item)
+
+            req.side_effect = [
+                {'Items': items[:10], 'LastEvaluatedKey': 'x'},
+                {'Items': items[10:20], 'LastEvaluatedKey': 'y'},
+                {'Items': items[20:30]},
+            ]
+            results = list(UserModel.query('foo', limit=50))
+            self.assertEqual(len(results), 30)
+            self.assertEqual(len(req.mock_calls), 3)
+            self.assertEquals(req.mock_calls[0][1][1]['Limit'], 50)
+            self.assertEquals(req.mock_calls[1][1][1]['Limit'], 50)
+            self.assertEquals(req.mock_calls[2][1][1]['Limit'], 50)
+
+    def test_query_limit_greater_than_available_items_and_page_size(self):
+        with patch(PATCH_METHOD) as req:
+            req.return_value = MODEL_TABLE_DATA
+            UserModel('foo', 'bar')
+
+        with patch(PATCH_METHOD) as req:
+            items = []
+            for idx in range(30):
+                item = copy.copy(GET_MODEL_ITEM_DATA.get(ITEM))
+                item['user_id'] = {STRING_SHORT: 'id-{0}'.format(idx)}
+                items.append(item)
+
+            req.side_effect = [
+                {'Items': items[:10], 'LastEvaluatedKey': 'x'},
+                {'Items': items[10:20], 'LastEvaluatedKey': 'y'},
+                {'Items': items[20:30]},
+            ]
+            results = list(UserModel.query('foo', limit=50, page_size=10))
+            self.assertEqual(len(results), 30)
+            self.assertEqual(len(req.mock_calls), 3)
+            self.assertEquals(req.mock_calls[0][1][1]['Limit'], 10)
+            self.assertEquals(req.mock_calls[1][1][1]['Limit'], 10)
+            self.assertEquals(req.mock_calls[2][1][1]['Limit'], 10)
 
     def test_query(self):
         """
@@ -1055,7 +2100,7 @@ class ModelTestCase(TestCase):
                 items.append(item)
             req.return_value = {'Items': items}
             queried = []
-            for item in UserModel.query('foo', user_id__between=['id-1', 'id-3']):
+            for item in UserModel.query('foo', UserModel.user_id.between('id-1', 'id-3')):
                 queried.append(item._serialize().get(RANGE))
             self.assertListEqual(
                 [item.get('user_id').get(STRING_SHORT) for item in items],
@@ -1070,7 +2115,32 @@ class ModelTestCase(TestCase):
                 items.append(item)
             req.return_value = {'Items': items}
             queried = []
-            for item in UserModel.query('foo', user_id__gt='id-1', user_id__le='id-2'):
+            for item in UserModel.query('foo', user_id__between=['id-1', 'id-3']):
+                queried.append(item._serialize().get(RANGE))
+            self.assertListEqual(
+                [item.get('user_id').get(STRING_SHORT) for item in items],
+                queried
+            )
+
+        # you cannot query a range key with multiple conditions
+        self.assertRaises(ValueError, lambda: list(UserModel.query('foo', user_id__gt='id-1', user_id__le='id-2')))
+
+        # you cannot query a non-primary key with multiple conditions
+        self.assertRaises(ValueError, lambda: list(UserModel.query('foo', zip_code__gt='77096', zip_code__le='94117')))
+
+        # you cannot use a range key in a query filter
+        self.assertRaises(ValueError, lambda: list(UserModel.query(
+            'foo', UserModel.user_id > 'id-1', UserModel.user_id <= 'id-2')))
+
+        with patch(PATCH_METHOD) as req:
+            items = []
+            for idx in range(10):
+                item = copy.copy(GET_MODEL_ITEM_DATA.get(ITEM))
+                item['user_id'] = {STRING_SHORT: 'id-{0}'.format(idx)}
+                items.append(item)
+            req.return_value = {'Items': items}
+            queried = []
+            for item in UserModel.query('foo', UserModel.user_id < 'id-1'):
                 queried.append(item._serialize())
             self.assertTrue(len(queried) == len(items))
 
@@ -1094,7 +2164,31 @@ class ModelTestCase(TestCase):
                 items.append(item)
             req.return_value = {'Items': items}
             queried = []
+            for item in UserModel.query('foo', UserModel.user_id >= 'id-1'):
+                queried.append(item._serialize())
+            self.assertTrue(len(queried) == len(items))
+
+        with patch(PATCH_METHOD) as req:
+            items = []
+            for idx in range(10):
+                item = copy.copy(GET_MODEL_ITEM_DATA.get(ITEM))
+                item['user_id'] = {STRING_SHORT: 'id-{0}'.format(idx)}
+                items.append(item)
+            req.return_value = {'Items': items}
+            queried = []
             for item in UserModel.query('foo', user_id__ge='id-1'):
+                queried.append(item._serialize())
+            self.assertTrue(len(queried) == len(items))
+
+        with patch(PATCH_METHOD) as req:
+            items = []
+            for idx in range(10):
+                item = copy.copy(GET_MODEL_ITEM_DATA.get(ITEM))
+                item['user_id'] = {STRING_SHORT: 'id-{0}'.format(idx)}
+                items.append(item)
+            req.return_value = {'Items': items}
+            queried = []
+            for item in UserModel.query('foo', UserModel.user_id <= 'id-1'):
                 queried.append(item._serialize())
             self.assertTrue(len(queried) == len(items))
 
@@ -1118,7 +2212,31 @@ class ModelTestCase(TestCase):
                 items.append(item)
             req.return_value = {'Items': items}
             queried = []
+            for item in UserModel.query('foo', UserModel.user_id == 'id-1'):
+                queried.append(item._serialize())
+            self.assertTrue(len(queried) == len(items))
+
+        with patch(PATCH_METHOD) as req:
+            items = []
+            for idx in range(10):
+                item = copy.copy(GET_MODEL_ITEM_DATA.get(ITEM))
+                item['user_id'] = {STRING_SHORT: 'id-{0}'.format(idx)}
+                items.append(item)
+            req.return_value = {'Items': items}
+            queried = []
             for item in UserModel.query('foo', user_id__eq='id-1'):
+                queried.append(item._serialize())
+            self.assertTrue(len(queried) == len(items))
+
+        with patch(PATCH_METHOD) as req:
+            items = []
+            for idx in range(10):
+                item = copy.copy(GET_MODEL_ITEM_DATA.get(ITEM))
+                item['user_id'] = {STRING_SHORT: 'id-{0}'.format(idx)}
+                items.append(item)
+            req.return_value = {'Items': items}
+            queried = []
+            for item in UserModel.query('foo', UserModel.user_id.startswith('id')):
                 queried.append(item._serialize())
             self.assertTrue(len(queried) == len(items))
 
@@ -1175,10 +2293,58 @@ class ModelTestCase(TestCase):
             req.return_value = CUSTOM_ATTR_NAME_INDEX_TABLE_DATA
             CustomAttrNameModel._get_meta_data()
 
+        # Note this test is not valid -- this is request user_name == 'bar' and user_name == 'foo'
+        # The new condition api correctly throws an exception for in this case.
         with patch(PATCH_METHOD) as req:
             req.return_value = {ITEMS: [CUSTOM_ATTR_NAME_ITEM_DATA.get(ITEM)]}
             for item in CustomAttrNameModel.query('bar', overidden_user_name__eq='foo'):
                 self.assertIsNotNone(item)
+
+        with patch(PATCH_METHOD) as req:
+            items = []
+            for idx in range(10):
+                item = copy.copy(GET_MODEL_ITEM_DATA.get(ITEM))
+                item['user_id'] = {STRING_SHORT: 'id-{0}'.format(idx)}
+                items.append(item)
+            req.return_value = {'Items': items}
+            queried = []
+            for item in UserModel.query(
+                    'foo',
+                    UserModel.user_id.startswith('id'),
+                    UserModel.email.contains('@') & UserModel.picture.exists() & UserModel.zip_code.between(2, 3)):
+                queried.append(item._serialize())
+            params = {
+                'KeyConditionExpression': '(#0 = :0 AND begins_with (#1, :1))',
+                'FilterExpression': '((contains (#2, :2) AND attribute_exists (#3)) AND #4 BETWEEN :3 AND :4)',
+                'ExpressionAttributeNames': {
+                    '#0': 'user_name',
+                    '#1': 'user_id',
+                    '#2': 'email',
+                    '#3': 'picture',
+                    '#4': 'zip_code'
+                },
+                'ExpressionAttributeValues': {
+                    ':0': {
+                        'S': u'foo'
+                    },
+                    ':1': {
+                        'S': u'id'
+                    },
+                    ':2': {
+                        'S': '@'
+                    },
+                    ':3': {
+                        'N': '2'
+                    },
+                    ':4': {
+                        'N': '3'
+                    }
+                },
+                'ReturnConsumedCapacity': 'TOTAL',
+                'TableName': 'UserModel'
+            }
+            self.assertEqual(params, req.call_args[0][1])
+            self.assertTrue(len(queried) == len(items))
 
         with patch(PATCH_METHOD) as req:
             items = []
@@ -1196,36 +2362,30 @@ class ModelTestCase(TestCase):
                     zip_code__between=[2, 3]):
                 queried.append(item._serialize())
             params = {
-                'KeyConditions': {
-                    'user_id': {
-                        'AttributeValueList': [
-                            {'S': 'id'}
-                        ],
-                        'ComparisonOperator': 'BEGINS_WITH'
-                    },
-                    'user_name': {
-                        'AttributeValueList': [
-                            {'S': 'foo'}
-                        ],
-                        'ComparisonOperator': 'EQ'
-                    }
+                'KeyConditionExpression': '(#0 = :0 AND begins_with (#1, :1))',
+                'FilterExpression': '((contains (#2, :2) AND attribute_exists (#3)) AND #4 BETWEEN :3 AND :4)',
+                'ExpressionAttributeNames': {
+                    '#0': 'user_name',
+                    '#1': 'user_id',
+                    '#2': 'email',
+                    '#3': 'picture',
+                    '#4': 'zip_code'
                 },
-                'QueryFilter': {
-                    'email': {
-                        'AttributeValueList': [
-                            {'S': '@'}
-                        ],
-                        'ComparisonOperator': 'CONTAINS'
+                'ExpressionAttributeValues': {
+                    ':0': {
+                        'S': u'foo'
                     },
-                    'zip_code': {
-                        'ComparisonOperator': 'BETWEEN',
-                        'AttributeValueList': [
-                            {'N': '2'},
-                            {'N': '3'}
-                        ]
+                    ':1': {
+                        'S': u'id'
                     },
-                    'picture': {
-                        'ComparisonOperator': 'NOT_NULL'
+                    ':2': {
+                        'S': '@'
+                    },
+                    ':3': {
+                        'N': '2'
+                    },
+                    ':4': {
+                        'N': '3'
                     }
                 },
                 'ReturnConsumedCapacity': 'TOTAL',
@@ -1233,6 +2393,26 @@ class ModelTestCase(TestCase):
             }
             self.assertEqual(params, req.call_args[0][1])
             self.assertTrue(len(queried) == len(items))
+
+    def test_scan_limit_with_page_size(self):
+        with patch(PATCH_METHOD) as req:
+            items = []
+            for idx in range(30):
+                item = copy.copy(GET_MODEL_ITEM_DATA.get(ITEM))
+                item['user_id'] = {STRING_SHORT: 'id-{0}'.format(idx)}
+                items.append(item)
+
+            req.side_effect = [
+                {'Items': items[:10], 'LastEvaluatedKey': 'x'},
+                {'Items': items[10:20], 'LastEvaluatedKey': 'y'},
+                {'Items': items[20:30]},
+            ]
+            results = list(UserModel.scan(limit=25, page_size=10))
+            self.assertEqual(len(results), 25)
+            self.assertEqual(len(req.mock_calls), 3)
+            self.assertEquals(req.mock_calls[0][1][1]['Limit'], 10)
+            self.assertEquals(req.mock_calls[1][1][1]['Limit'], 10)
+            self.assertEquals(req.mock_calls[2][1][1]['Limit'], 10)
 
     def test_scan_limit(self):
         """
@@ -1255,7 +2435,67 @@ class ModelTestCase(TestCase):
             for item in UserModel.scan(limit=4):
                 count += 1
                 self.assertIsNotNone(item)
+            self.assertEqual(len(req.mock_calls), 1)
+            self.assertEquals(req.mock_calls[0][1][1]['Limit'], 4)
             self.assertEqual(count, 4)
+
+        with patch(PATCH_METHOD, new=mock_scan) as req:
+            count = 0
+            for item in UserModel.scan(limit=4, consistent_read=True):
+                count += 1
+                self.assertIsNotNone(item)
+            self.assertEqual(len(req.mock_calls), 2)
+            self.assertEquals(req.mock_calls[1][1][1]['Limit'], 4)
+            self.assertEquals(req.mock_calls[1][1][1]['ConsistentRead'], True)
+            self.assertEqual(count, 4)
+
+    def test_rate_limited_scan(self):
+        """
+        Model.rate_limited_scan
+        """
+        with patch('pynamodb.connection.Connection.rate_limited_scan') as req:
+            items = []
+
+            item = copy.copy(GET_MODEL_ITEM_DATA.get(ITEM))
+            item['user_id'] = {STRING_SHORT: '11232'}
+            items.append(item)
+
+            req.return_value = items
+            result = UserModel.rate_limited_scan(
+                segment=1,
+                total_segments=12,
+                limit=16,
+                conditional_operator='AND',
+                last_evaluated_key='XXX',
+                page_size=11,
+                timeout_seconds=21,
+                read_capacity_to_consume_per_second=33,
+                allow_rate_limited_scan_without_consumed_capacity=False,
+                max_sleep_between_retry=4,
+                max_consecutive_exceptions=22,
+                attributes_to_get=['X1', 'X2'],
+                consistent_read=True
+            )
+            self.assertEqual(1, len(list(result)))
+            self.assertEqual('UserModel', req.call_args[0][0])
+            params = {
+                'filter_condition': None,
+                'segment': 1,
+                'total_segments': 12,
+                'limit': 16,
+                'conditional_operator': 'AND',
+                'exclusive_start_key': 'XXX',
+                'page_size': 11,
+                'timeout_seconds': 21,
+                'scan_filter': {},
+                'attributes_to_get': ['X1', 'X2'],
+                'read_capacity_to_consume_per_second': 33,
+                'allow_rate_limited_scan_without_consumed_capacity': False,
+                'max_sleep_between_retry': 4,
+                'max_consecutive_exceptions': 22,
+                'consistent_read': True
+            }
+            self.assertEqual(params, req.call_args[1])
 
         with patch(PATCH_METHOD) as req:
             items = []
@@ -1264,65 +2504,87 @@ class ModelTestCase(TestCase):
                 item['user_id'] = {STRING_SHORT: 'id-{0}'.format(idx)}
                 items.append(item)
             req.return_value = {'Items': items}
-            queried = []
-            for item in UserModel.query(
-                    'foo',
-                    user_id__begins_with='id',
-                    email__contains='@',
-                    picture__null=False,
-                    zip_code__ge=2,
-                    conditional_operator='AND'):
-                queried.append(item._serialize())
+            scanned_items = []
+
+            for item in UserModel.rate_limited_scan(limit=5):
+                scanned_items.append(item._serialize().get(RANGE))
+            self.assertListEqual(
+                [item.get('user_id').get(STRING_SHORT) for item in items[:5]],
+                scanned_items
+            )
+
+        with patch(PATCH_METHOD) as req:
+            items = []
+            for idx in range(10):
+                item = copy.copy(GET_MODEL_ITEM_DATA.get(ITEM))
+                item['user_id'] = {STRING_SHORT: 'id-{0}'.format(idx)}
+                items.append(item)
+            req.return_value = {'Items': items, 'ConsumedCapacity': {'TableName': 'UserModel', 'CapacityUnits': 10}}
+            scan_result = UserModel.rate_limited_scan(
+                user_id__contains='tux',
+                zip_code__null=False,
+                email__null=True,
+                read_capacity_to_consume_per_second=13
+            )
+
+            for item in scan_result:
+                self.assertIsNotNone(item)
             params = {
-                'KeyConditions': {
-                    'user_id': {
-                        'AttributeValueList': [
-                            {'S': 'id'}
-                        ],
-                        'ComparisonOperator': 'BEGINS_WITH'
-                    },
-                    'user_name': {
-                        'AttributeValueList': [
-                            {'S': 'foo'}
-                        ],
-                        'ComparisonOperator': 'EQ'
-                    }
-                },
-                'query_filter': {
-                    'email': {
-                        'AttributeValueList': [
-                            {'S': '@'}
-                        ],
-                        'ComparisonOperator': 'CONTAINS'
-                    },
-                    'zip_code': {
-                        'ComparisonOperator': 'GE',
-                        'AttributeValueList': [
-                            {'N': '2'},
-                        ]
-                    },
-                    'picture': {
-                        'ComparisonOperator': 'NOT_NULL'
-                    }
-                },
-                'ConditionalOperator': 'AND',
+                'Limit': 13,
                 'ReturnConsumedCapacity': 'TOTAL',
+                'FilterExpression': '((attribute_not_exists (#0) AND contains (#1, :0)) AND attribute_exists (#2))',
+                'ExpressionAttributeNames': {
+                    '#0': 'email',
+                    '#1': 'user_id',
+                    '#2': 'zip_code'
+                },
+                'ExpressionAttributeValues': {
+                    ':0': {
+                        'S': 'tux'
+                    }
+                },
+                'TableName': 'UserModel'
+            }
+            self.assertEquals(params, req.call_args[0][1])
+
+        with patch(PATCH_METHOD) as req:
+            items = []
+            for idx in range(10):
+                item = copy.copy(GET_MODEL_ITEM_DATA.get(ITEM))
+                item['user_id'] = {STRING_SHORT: 'id-{0}'.format(idx)}
+                items.append(item)
+            req.return_value = {'Items': items}
+            for item in UserModel.scan(
+                    user_id__contains='tux',
+                    zip_code__null=False,
+                    conditional_operator='OR',
+                    email__null=True,
+                    page_size=12):
+                self.assertIsNotNone(item)
+            params = {
+                'Limit': 12,
+                'ReturnConsumedCapacity': 'TOTAL',
+                'FilterExpression': '((attribute_not_exists (#0) OR contains (#1, :0)) OR attribute_exists (#2))',
+                'ExpressionAttributeNames': {
+                    '#0': 'email',
+                    '#1': 'user_id',
+                    '#2': 'zip_code'
+                },
+                'ExpressionAttributeValues': {
+                    ':0': {
+                        'S': 'tux'
+                    },
+                },
                 'TableName': 'UserModel'
             }
 
-            for key in ('ConditionalOperator', 'ReturnConsumedCapacity', 'TableName'):
-                self.assertEqual(req.call_args[0][1][key], params[key])
-            for key in ('user_id', 'user_name'):
-                self.assertEqual(
-                    req.call_args[0][1]['KeyConditions'][key],
-                    params['KeyConditions'][key]
-                )
-            for key in ('email', 'zip_code', 'picture'):
-                self.assertEqual(
-                    sorted(req.call_args[0][1]['QueryFilter'][key].items(), key=lambda x: x[0]),
-                    sorted(params['query_filter'][key].items(), key=lambda x: x[0]),
-                )
-            self.assertTrue(len(queried) == len(items))
+            self.assertEquals(params, req.call_args[0][1])
+
+        # you cannot scan with multiple conditions against the same key
+        self.assertRaises(
+            ValueError,
+            lambda: list(UserModel.scan(user_id__contains='tux', user_id__beginswith='penguin'))
+        )
 
     def test_scan(self):
         """
@@ -1379,18 +2641,15 @@ class ModelTestCase(TestCase):
                 self.assertIsNotNone(item)
             params = {
                 'ReturnConsumedCapacity': 'TOTAL',
-                'ScanFilter': {
-                    'user_id': {
-                        'AttributeValueList': [
-                            {'S': 'tux'}
-                        ],
-                        'ComparisonOperator': 'CONTAINS'
-                    },
-                    'zip_code': {
-                        'ComparisonOperator': 'NOT_NULL'
-                    },
-                    'email': {
-                        'ComparisonOperator': 'NULL'
+                'FilterExpression': '((attribute_not_exists (#0) AND contains (#1, :0)) AND attribute_exists (#2))',
+                'ExpressionAttributeNames': {
+                    '#0': 'email',
+                    '#1': 'user_id',
+                    '#2': 'zip_code'
+                },
+                'ExpressionAttributeValues': {
+                    ':0': {
+                        'S': 'tux'
                     }
                 },
                 'TableName': 'UserModel'
@@ -1412,24 +2671,26 @@ class ModelTestCase(TestCase):
                 self.assertIsNotNone(item)
             params = {
                 'ReturnConsumedCapacity': 'TOTAL',
-                'ScanFilter': {
-                    'user_id': {
-                        'AttributeValueList': [
-                            {'S': 'tux'}
-                        ],
-                        'ComparisonOperator': 'CONTAINS'
-                    },
-                    'zip_code': {
-                        'ComparisonOperator': 'NOT_NULL'
-                    },
-                    'email': {
-                        'ComparisonOperator': 'NULL'
-                    },
+                'FilterExpression': '((attribute_not_exists (#0) OR contains (#1, :0)) OR attribute_exists (#2))',
+                'ExpressionAttributeNames': {
+                    '#0': 'email',
+                    '#1': 'user_id',
+                    '#2': 'zip_code'
                 },
-                'ConditionalOperator': 'OR',
+                'ExpressionAttributeValues': {
+                    ':0': {
+                        'S': 'tux'
+                    }
+                },
                 'TableName': 'UserModel'
             }
             self.assertEquals(params, req.call_args[0][1])
+
+        # you cannot scan with multiple conditions against the same key
+        self.assertRaises(
+            ValueError,
+            lambda: list(UserModel.scan(user_id__contains='tux', user_id__beginswith='penguin'))
+        )
 
     def test_get(self):
         """
@@ -1482,6 +2743,24 @@ class ModelTestCase(TestCase):
             self.assertRaises(UserModel.DoesNotExist, UserModel.get, 'foo', 'bar')
 
         with patch(PATCH_METHOD) as req:
+            req.return_value = {}
+            try:
+                UserModel.get('foo')
+            except SimpleUserModel.DoesNotExist:
+                self.fail('DoesNotExist exceptions must be distinct per-model')
+            except UserModel.DoesNotExist:
+                pass
+
+        with patch(PATCH_METHOD) as req:
+            req.return_value = {}
+            try:
+                UserModel.get('foo')
+            except DoesNotExist:
+                pass
+            except UserModel.DoesNotExist:
+                self.fail('UserModel.Exception must derive from pynamodb.Exceptions.DoesNotExist')
+
+        with patch(PATCH_METHOD) as req:
             req.return_value = CUSTOM_ATTR_NAME_INDEX_TABLE_DATA
             CustomAttrNameModel._get_meta_data()
 
@@ -1529,6 +2808,63 @@ class ModelTestCase(TestCase):
                             {'user_name': {'S': 'hash-1'}},
                             {'user_name': {'S': 'hash-0'}}
                         ]
+                    }
+                }
+            }
+            self.assertEqual(params, req.call_args[0][1])
+
+        with patch(PATCH_METHOD) as req:
+            req.return_value = SIMPLE_BATCH_GET_ITEMS
+            item_keys = ['hash-{0}'.format(x) for x in range(10)]
+            for item in SimpleUserModel.batch_get(item_keys, attributes_to_get=['numbers']):
+                self.assertIsNotNone(item)
+            params = {
+                'ReturnConsumedCapacity': 'TOTAL',
+                'RequestItems': {
+                    'SimpleModel': {
+                        'Keys': [
+                            {'user_name': {'S': 'hash-9'}},
+                            {'user_name': {'S': 'hash-8'}},
+                            {'user_name': {'S': 'hash-7'}},
+                            {'user_name': {'S': 'hash-6'}},
+                            {'user_name': {'S': 'hash-5'}},
+                            {'user_name': {'S': 'hash-4'}},
+                            {'user_name': {'S': 'hash-3'}},
+                            {'user_name': {'S': 'hash-2'}},
+                            {'user_name': {'S': 'hash-1'}},
+                            {'user_name': {'S': 'hash-0'}}
+                        ],
+                        'ProjectionExpression': '#0',
+                        'ExpressionAttributeNames': {
+                            '#0': 'numbers'
+                        }
+                    }
+                }
+            }
+            self.assertEqual(params, req.call_args[0][1])
+
+        with patch(PATCH_METHOD) as req:
+            req.return_value = SIMPLE_BATCH_GET_ITEMS
+            item_keys = ['hash-{0}'.format(x) for x in range(10)]
+            for item in SimpleUserModel.batch_get(item_keys, consistent_read=True):
+                self.assertIsNotNone(item)
+            params = {
+                'ReturnConsumedCapacity': 'TOTAL',
+                'RequestItems': {
+                    'SimpleModel': {
+                        'Keys': [
+                            {'user_name': {'S': 'hash-9'}},
+                            {'user_name': {'S': 'hash-8'}},
+                            {'user_name': {'S': 'hash-7'}},
+                            {'user_name': {'S': 'hash-6'}},
+                            {'user_name': {'S': 'hash-5'}},
+                            {'user_name': {'S': 'hash-4'}},
+                            {'user_name': {'S': 'hash-3'}},
+                            {'user_name': {'S': 'hash-2'}},
+                            {'user_name': {'S': 'hash-1'}},
+                            {'user_name': {'S': 'hash-0'}}
+                        ],
+                        'ConsistentRead': True
                     }
                 }
             }
@@ -1640,24 +2976,49 @@ class ModelTestCase(TestCase):
                 for item in items:
                     batch.save(item)
 
-        def fake_unprocessed_keys(*args, **kwargs):
-            if pythonic(REQUEST_ITEMS) in kwargs:
-                batch_items = kwargs.get(pythonic(REQUEST_ITEMS)).get(UserModel.Meta.table_name)[1:]
-                unprocessed = {
-                    UNPROCESSED_KEYS: {
-                        UserModel.Meta.table_name: batch_items
+    def test_batch_write_with_unprocessed(self):
+        picture_blob = b'FFD8FFD8'
+
+        items = []
+        for idx in range(10):
+            items.append(UserModel(
+                'daniel',
+                '{0}'.format(idx),
+                picture=picture_blob,
+            ))
+
+        unprocessed_items = []
+        for idx in range(5, 10):
+            unprocessed_items.append({
+                'PutRequest': {
+                    'Item': {
+                        'custom_username': {STRING_SHORT: 'daniel'},
+                        'user_id': {STRING_SHORT: '{0}'.format(idx)},
+                        'picture': {BINARY_SHORT: base64.b64encode(picture_blob).decode(DEFAULT_ENCODING)}
                     }
                 }
-                return unprocessed
-            return {}
+            })
 
-        batch_write_mock = MagicMock()
-        batch_write_mock.side_effect = fake_unprocessed_keys
+        with patch(PATCH_METHOD) as req:
+            req.side_effect = [
+                {
+                    UNPROCESSED_ITEMS: {
+                        UserModel.Meta.table_name: unprocessed_items[:2],
+                    }
+                },
+                {
+                    UNPROCESSED_ITEMS: {
+                        UserModel.Meta.table_name: unprocessed_items[2:],
+                    }
+                },
+                {}
+            ]
 
-        with patch(PATCH_METHOD, new=batch_write_mock) as req:
-            items = [UserModel('hash-{0}'.format(x), '{0}'.format(x)) for x in range(500)]
-            for item in items:
-                batch.save(item)
+            with UserModel.batch_write() as batch:
+                for item in items:
+                    batch.save(item)
+
+            self.assertEqual(len(req.mock_calls), 3)
 
     def test_index_queries(self):
         """
@@ -1703,26 +3064,57 @@ class ModelTestCase(TestCase):
             req.return_value = {'Items': items}
             queried = []
 
+            for item in IndexedModel.email_index.query('foo', IndexedModel.user_name.startswith('bar'), limit=2):
+                queried.append(item._serialize())
+
+            params = {
+                'KeyConditionExpression': '#0 = :0',
+                'FilterExpression': 'begins_with (#1, :1)',
+                'ExpressionAttributeNames': {
+                    '#0': 'email',
+                    '#1': 'user_name'
+                },
+                'ExpressionAttributeValues': {
+                    ':0': {
+                        'S': u'foo'
+                    },
+                    ':1': {
+                        'S': u'bar'
+                    }
+                },
+                'IndexName': 'custom_idx_name',
+                'TableName': 'IndexedModel',
+                'ReturnConsumedCapacity': 'TOTAL',
+                'Limit': 2
+            }
+            self.assertEqual(req.call_args[0][1], params)
+
+        # Note this test is incorrect as 'user_name' is not the range key for email_index.
+        with patch(PATCH_METHOD) as req:
+            items = []
+            for idx in range(10):
+                item = copy.copy(GET_MODEL_ITEM_DATA.get(ITEM))
+                item['user_name'] = {STRING_SHORT: 'id-{0}'.format(idx)}
+                item['email'] = {STRING_SHORT: 'id-{0}'.format(idx)}
+                items.append(item)
+            req.return_value = {'Items': items}
+            queried = []
+
             for item in IndexedModel.email_index.query('foo', limit=2, user_name__begins_with='bar'):
                 queried.append(item._serialize())
 
             params = {
-                'KeyConditions': {
-                    'user_name': {
-                        'ComparisonOperator': 'BEGINS_WITH',
-                        'AttributeValueList': [
-                            {
-                                'S': u'bar'
-                            }
-                        ]
+                'KeyConditionExpression': '(#0 = :0 AND begins_with (#1, :1))',
+                'ExpressionAttributeNames': {
+                    '#0': 'email',
+                    '#1': 'user_name'
+                },
+                'ExpressionAttributeValues': {
+                    ':0': {
+                        'S': u'foo'
                     },
-                    'email': {
-                        'ComparisonOperator': 'EQ',
-                        'AttributeValueList': [
-                            {
-                                'S': u'foo'
-                            }
-                        ]
+                    ':1': {
+                        'S': u'bar'
                     }
                 },
                 'IndexName': 'custom_idx_name',
@@ -1744,38 +3136,71 @@ class ModelTestCase(TestCase):
 
             for item in LocalIndexedModel.email_index.query(
                     'foo',
+                    LocalIndexedModel.user_name.startswith('bar') & LocalIndexedModel.aliases.contains(1),
+                    limit=1):
+                queried.append(item._serialize())
+
+            params = {
+                'KeyConditionExpression': '#0 = :0',
+                'FilterExpression': '(begins_with (#1, :1) AND contains (#2, :2))',
+                'ExpressionAttributeNames': {
+                    '#0': 'email',
+                    '#1': 'user_name',
+                    '#2': 'aliases'
+                },
+                'ExpressionAttributeValues': {
+                    ':0': {
+                        'S': u'foo'
+                    },
+                    ':1': {
+                        'S': u'bar'
+                    },
+                    ':2': {
+                        'S': '1'
+                    }
+                },
+                'IndexName': 'email_index',
+                'TableName': 'LocalIndexedModel',
+                'ReturnConsumedCapacity': 'TOTAL',
+                'Limit': 1
+            }
+            self.assertEqual(req.call_args[0][1], params)
+
+        # Note this test is incorrect as 'user_name' is not the range key for email_index.
+        with patch(PATCH_METHOD) as req:
+            items = []
+            for idx in range(10):
+                item = copy.copy(GET_MODEL_ITEM_DATA.get(ITEM))
+                item['user_name'] = {STRING_SHORT: 'id-{0}'.format(idx)}
+                item['email'] = {STRING_SHORT: 'id-{0}'.format(idx)}
+                items.append(item)
+            req.return_value = {'Items': items}
+            queried = []
+
+            for item in LocalIndexedModel.email_index.query(
+                    'foo',
                     limit=1,
                     user_name__begins_with='bar',
                     aliases__contains=1):
                 queried.append(item._serialize())
 
             params = {
-                'KeyConditions': {
-                    'user_name': {
-                        'ComparisonOperator': 'BEGINS_WITH',
-                        'AttributeValueList': [
-                            {
-                                'S': u'bar'
-                            }
-                        ]
-                    },
-                    'email': {
-                        'ComparisonOperator': 'EQ',
-                        'AttributeValueList': [
-                            {
-                                'S': u'foo'
-                            }
-                        ]
-                    }
+                'KeyConditionExpression': '(#0 = :0 AND begins_with (#1, :1))',
+                'FilterExpression': 'contains (#2, :2)',
+                'ExpressionAttributeNames': {
+                    '#0': 'email',
+                    '#1': 'user_name',
+                    '#2': 'aliases'
                 },
-                'QueryFilter': {
-                    'aliases': {
-                        'AttributeValueList': [
-                            {
-                                'SS': ['1']
-                            }
-                        ],
-                        'ComparisonOperator': 'CONTAINS'
+                'ExpressionAttributeValues': {
+                    ':0': {
+                        'S': u'foo'
+                    },
+                    ':1': {
+                        'S': u'bar'
+                    },
+                    ':2': {
+                        'S': '1'
                     }
                 },
                 'IndexName': 'email_index',
@@ -1794,26 +3219,59 @@ class ModelTestCase(TestCase):
             req.return_value = {'Items': items}
             queried = []
 
-            for item in CustomAttrNameModel.uid_index.query('foo', limit=2, user_name__begins_with='bar'):
+            for item in CustomAttrNameModel.uid_index.query(
+                    'foo',
+                    CustomAttrNameModel.overidden_user_name.startswith('bar'),
+                    limit=2):
                 queried.append(item._serialize())
 
             params = {
-                'KeyConditions': {
-                    'user_name': {
-                        'ComparisonOperator': 'BEGINS_WITH',
-                        'AttributeValueList': [
-                            {
-                                'S': u'bar'
-                            }
-                        ]
+                'KeyConditionExpression': '#0 = :0',
+                'FilterExpression': 'begins_with (#1, :1)',
+                'ExpressionAttributeNames': {
+                    '#0': 'user_id',
+                    '#1': 'user_name'
+                },
+                'ExpressionAttributeValues': {
+                    ':0': {
+                        'S': u'foo'
                     },
-                    'user_id': {
-                        'ComparisonOperator': 'EQ',
-                        'AttributeValueList': [
-                            {
-                                'S': u'foo'
-                            }
-                        ]
+                    ':1': {
+                        'S': u'bar'
+                    }
+                },
+                'IndexName': 'uid_index',
+                'TableName': 'CustomAttrModel',
+                'ReturnConsumedCapacity': 'TOTAL',
+                'Limit': 2
+            }
+            self.assertEqual(req.call_args[0][1], params)
+
+        # Note: this test is incorrect since uid_index has no range key
+        with patch(PATCH_METHOD) as req:
+            items = []
+            for idx in range(10):
+                item = copy.copy(GET_MODEL_ITEM_DATA.get(ITEM))
+                item['user_name'] = {STRING_SHORT: 'id-{0}'.format(idx)}
+                items.append(item)
+            req.return_value = {'Items': items}
+            queried = []
+
+            for item in CustomAttrNameModel.uid_index.query('foo', limit=2, overidden_user_name__begins_with='bar'):
+                queried.append(item._serialize())
+
+            params = {
+                'KeyConditionExpression': '(#0 = :0 AND begins_with (#1, :1))',
+                'ExpressionAttributeNames': {
+                    '#0': 'user_id',
+                    '#1': 'user_name'
+                },
+                'ExpressionAttributeValues': {
+                    ':0': {
+                        'S': u'foo'
+                    },
+                    ':1': {
+                        'S': u'bar'
                     }
                 },
                 'IndexName': 'uid_index',
@@ -2156,3 +3614,674 @@ class ModelTestCase(TestCase):
             ]
         }
         self.assert_dict_lists_equal(req.call_args[0][1]['RequestItems']['UserModel'], args['UserModel'])
+
+    def _get_office_employee(self):
+        justin = Person(
+            fname='Justin',
+            lname='Phillips',
+            age=31,
+            is_male=True
+        )
+        loc = Location(
+            lat=37.77461,
+            lng=-122.3957216,
+            name='Lyft HQ'
+        )
+        return OfficeEmployee(
+            hash_key=None,
+            range_key=None,
+            office_employee_id=123,
+            person=justin,
+            office_location=loc
+        )
+
+    def _get_grocery_list(self):
+        return GroceryList(store_name='Haight Street Market',
+                           groceries=['bread', 1, 'butter', 6, 'milk', 1])
+
+    def _get_complex_thing(self):
+        justin = Person(
+            fname='Justin',
+            lname='Phillips',
+            age=31,
+            is_male=True
+        )
+        return ComplexModel(person=justin, key=123)
+
+    def _get_office(self):
+        justin = Person(
+            fname='Justin',
+            lname='Phillips',
+            age=31,
+            is_male=True
+        )
+        lei = Person(
+            fname='Lei',
+            lname='Ding',
+            age=32,
+            is_male=True
+        )
+        garrett = Person(
+            fname='Garrett',
+            lname='Heel',
+            age=30,
+            is_male=True
+        )
+        tanya = Person(
+            fname='Tanya',
+            lname='Ashkenazi',
+            age=30,
+            is_male=False
+        )
+        loc = Location(
+            lat=37.77461,
+            lng=-122.3957216,
+            name='Lyft HQ'
+        )
+        emp1 = OfficeEmployeeMap(
+            office_employee_id=123,
+            person=justin,
+            office_location=loc
+        )
+        emp2 = OfficeEmployeeMap(
+            office_employee_id=124,
+            person=lei,
+            office_location=loc
+        )
+        emp3 = OfficeEmployeeMap(
+            office_employee_id=125,
+            person=garrett,
+            office_location=loc
+        )
+        emp4 = OfficeEmployeeMap(
+            office_employee_id=126,
+            person=tanya,
+            office_location=loc
+        )
+        return Office(
+            office_id=3,
+            address=loc,
+            employees=[emp1, emp2, emp3, emp4]
+        )
+
+    def test_model_with_maps(self):
+        office_employee = self._get_office_employee()
+        with patch(PATCH_METHOD) as req:
+            req.return_value = OFFICE_EMPLOYEE_MODEL_TABLE_DATA
+            office_employee.save()
+
+    def test_model_with_list(self):
+        grocery_list = self._get_grocery_list()
+        with patch(PATCH_METHOD) as req:
+            req.return_value = GROCERY_LIST_MODEL_TABLE_DATA
+            grocery_list.save()
+
+    def test_model_with_list_of_map(self):
+        item = self._get_office()
+        with patch(PATCH_METHOD) as req:
+            req.return_value = OFFICE_MODEL_TABLE_DATA
+            item.save()
+
+    def test_model_with_nulls_validates(self):
+        car_info = CarInfoMap(make='Dodge')
+        item = CarModel(car_id=123, car_info=car_info)
+        with patch(PATCH_METHOD) as req:
+            req.return_value = CAR_MODEL_WITH_NULL_ITEM_DATA
+            item.save()
+
+    def test_model_with_invalid_data_does_not_validate(self):
+        car_info = CarInfoMap(model='Envoy')
+        item = CarModel(car_id=123, car_info=car_info)
+        with patch(PATCH_METHOD) as req:
+            req.return_value = INVALID_CAR_MODEL_WITH_NULL_ITEM_DATA
+            with self.assertRaises(ValueError):
+                item.save()
+
+    def test_model_works_like_model(self):
+        office_employee = self._get_office_employee()
+        self.assertTrue(office_employee.person)
+        self.assertEquals('Justin', office_employee.person.fname)
+        self.assertEquals('Phillips', office_employee.person.lname)
+        self.assertEquals(31, office_employee.person.age)
+        self.assertEquals(True, office_employee.person.is_male)
+
+    def test_list_works_like_list(self):
+        grocery_list = self._get_grocery_list()
+        self.assertTrue(grocery_list.groceries)
+        self.assertEquals('butter', grocery_list.groceries[2])
+
+    def test_complex_model_is_complex(self):
+        complex_thing = self._get_complex_thing()
+        self.assertTrue(complex_thing.person)
+        self.assertEquals(complex_thing.person.fname, 'Justin')
+        self.assertEquals(complex_thing.key, 123)
+
+    def test_list_of_map_works_like_list_of_map(self):
+        office = self._get_office()
+        self.assertTrue(office.employees[1].person.is_male)
+        self.assertFalse(office.employees[3].person.is_male)
+        self.assertEquals(office.employees[2].person.fname, 'Garrett')
+        self.assertEquals(office.employees[0].person.lname, 'Phillips')
+
+    def test_invalid_map_model_raises(self):
+        fake_db = self.database_mocker(CarModel, CAR_MODEL_TABLE_DATA,
+                                       FULL_CAR_MODEL_ITEM_DATA, 'car_id', 'N',
+                                 '123')
+
+        with patch(PATCH_METHOD, new=fake_db) as req:
+            with self.assertRaises(ValueError):
+                CarModel(car_id=2).save()
+            try:
+                CarModel(car_id=2).save()
+            except ValueError as e:
+                assert str(e) == "Attribute 'car_info' cannot be None"
+
+    def test_model_with_maps_retrieve_from_db(self):
+        fake_db = self.database_mocker(OfficeEmployee, OFFICE_EMPLOYEE_MODEL_TABLE_DATA,
+                                       GET_OFFICE_EMPLOYEE_ITEM_DATA, 'office_employee_id', 'N',
+                                 '123')
+
+        with patch(PATCH_METHOD, new=fake_db) as req:
+            req.return_value = GET_OFFICE_EMPLOYEE_ITEM_DATA
+            item = OfficeEmployee.get(123)
+            self.assertEqual(
+                item.person.fname,
+                GET_OFFICE_EMPLOYEE_ITEM_DATA.get(ITEM).get('person').get(
+                    MAP_SHORT).get('firstName').get(STRING_SHORT))
+
+    def test_model_with_maps_with_nulls_retrieve_from_db(self):
+        fake_db = self.database_mocker(OfficeEmployee, OFFICE_EMPLOYEE_MODEL_TABLE_DATA,
+                                       GET_OFFICE_EMPLOYEE_ITEM_DATA_WITH_NULL, 'office_employee_id', 'N',
+                                 '123')
+
+        with patch(PATCH_METHOD, new=fake_db) as req:
+            req.return_value = GET_OFFICE_EMPLOYEE_ITEM_DATA_WITH_NULL
+            item = OfficeEmployee.get(123)
+            self.assertEqual(
+                item.person.fname,
+                GET_OFFICE_EMPLOYEE_ITEM_DATA_WITH_NULL.get(ITEM).get('person').get(
+                    MAP_SHORT).get('firstName').get(STRING_SHORT))
+            self.assertIsNone(item.person.age)
+            self.assertIsNone(item.person.is_male)
+
+    def test_model_with_maps_with_pythonic_attributes(self):
+        fake_db = self.database_mocker(
+            OfficeEmployee,
+            OFFICE_EMPLOYEE_MODEL_TABLE_DATA,
+            GET_OFFICE_EMPLOYEE_ITEM_DATA,
+            'office_employee_id',
+            'N',
+            '123'
+        )
+
+        with patch(PATCH_METHOD, new=fake_db) as req:
+            req.return_value = GET_OFFICE_EMPLOYEE_ITEM_DATA
+            item = OfficeEmployee.get(123)
+            self.assertEqual(
+                item.person.fname,
+                GET_OFFICE_EMPLOYEE_ITEM_DATA
+                    .get(ITEM)
+                    .get('person')
+                    .get(MAP_SHORT)
+                    .get('firstName')
+                    .get(STRING_SHORT)
+            )
+        assert item.person.is_male
+        with pytest.raises(AttributeError):
+            item.person.is_dude
+
+    def test_model_with_list_retrieve_from_db(self):
+        fake_db = self.database_mocker(GroceryList, GROCERY_LIST_MODEL_TABLE_DATA,
+                                       GET_GROCERY_LIST_ITEM_DATA, 'store_name', 'S',
+                                 'Haight Street Market')
+
+        with patch(PATCH_METHOD, new=fake_db) as req:
+            req.return_value = GET_GROCERY_LIST_ITEM_DATA
+            item = GroceryList.get('Haight Street Market')
+            self.assertEquals(item.store_name, GET_GROCERY_LIST_ITEM_DATA.get(ITEM).get('store_name').get(STRING_SHORT))
+            self.assertEquals(
+                item.groceries[2],
+                GET_GROCERY_LIST_ITEM_DATA.get(ITEM).get('groceries').get(
+                    LIST_SHORT)[2].get(STRING_SHORT))
+            self.assertEquals(item.store_name, 'Haight Street Market')
+
+    def test_model_with_list_of_map_retrieve_from_db(self):
+        fake_db = self.database_mocker(Office, OFFICE_MODEL_TABLE_DATA,
+                                       GET_OFFICE_ITEM_DATA, 'office_id', 'N',
+                                 '6161')
+
+        with patch(PATCH_METHOD, new=fake_db) as req:
+            req.return_value = GET_OFFICE_ITEM_DATA
+            item = Office.get(6161)
+            self.assertEquals(item.office_id,
+                              int(GET_OFFICE_ITEM_DATA.get(ITEM).get('office_id').get(NUMBER_SHORT)))
+            self.assertEquals(item.office_id, 6161)
+            self.assertEquals(
+                item.employees[2].person.fname,
+                GET_OFFICE_ITEM_DATA.get(ITEM).get('employees').get(
+                    LIST_SHORT)[2].get(MAP_SHORT).get('person').get(MAP_SHORT).get('firstName').get(STRING_SHORT))
+
+    def test_complex_model_retrieve_from_db(self):
+        fake_db = self.database_mocker(ComplexModel, COMPLEX_MODEL_TABLE_DATA,
+                                       COMPLEX_MODEL_ITEM_DATA, 'key', 'N',
+                                 '123')
+
+        with patch(PATCH_METHOD, new=fake_db) as req:
+            req.return_value = COMPLEX_MODEL_ITEM_DATA
+            item = ComplexModel.get(123)
+            self.assertEquals(item.key,
+                              int(COMPLEX_MODEL_ITEM_DATA.get(ITEM).get(
+                                  'key').get(NUMBER_SHORT)))
+            self.assertEquals(item.key, 123)
+            self.assertEquals(
+                item.person.fname,
+                COMPLEX_MODEL_ITEM_DATA.get(ITEM).get('weird_person').get(
+                    MAP_SHORT).get('firstName').get(STRING_SHORT))
+
+    def database_mocker(self, model, table_data, item_data,
+                        primary_key_name, primary_key_dynamo_type, primary_key_id):
+        def fake_dynamodb(*args):
+            kwargs = args[1]
+            if kwargs == {'TableName': model.Meta.table_name}:
+                return table_data
+            elif kwargs == {
+                'ReturnConsumedCapacity': 'TOTAL',
+                'TableName': model.Meta.table_name,
+                'Key': {
+                    primary_key_name: {primary_key_dynamo_type: primary_key_id},
+                },
+                'ConsistentRead': False}:
+                return item_data
+            return table_data
+        fake_db = MagicMock()
+        fake_db.side_effect = fake_dynamodb
+        return fake_db
+
+    def test_car_model_retrieve_from_db(self):
+        fake_db = self.database_mocker(CarModel, CAR_MODEL_TABLE_DATA,
+                                       FULL_CAR_MODEL_ITEM_DATA, 'car_id', 'N', '123')
+
+        with patch(PATCH_METHOD, new=fake_db) as req:
+            req.return_value = FULL_CAR_MODEL_ITEM_DATA
+            item = CarModel.get(123)
+            self.assertEquals(item.car_id,
+                              int(FULL_CAR_MODEL_ITEM_DATA.get(ITEM).get(
+                                  'car_id').get(NUMBER_SHORT)))
+            self.assertEquals(item.car_info.make, 'Volkswagen')
+            self.assertEquals(item.car_info.model, 'Beetle')
+
+    def test_car_model_with_null_retrieve_from_db(self):
+        fake_db = self.database_mocker(CarModel, CAR_MODEL_TABLE_DATA,
+                                       CAR_MODEL_WITH_NULL_ITEM_DATA, 'car_id', 'N',
+                                 '123')
+
+        with patch(PATCH_METHOD, new=fake_db) as req:
+            req.return_value = CAR_MODEL_WITH_NULL_ITEM_DATA
+            item = CarModel.get(123)
+            self.assertEquals(item.car_id,
+                              int(CAR_MODEL_WITH_NULL_ITEM_DATA.get(ITEM).get(
+                                  'car_id').get(NUMBER_SHORT)))
+            self.assertEquals(item.car_info.make, 'Dodge')
+            self.assertIsNone(item.car_info.model)
+
+    def test_invalid_car_model_with_null_retrieve_from_db(self):
+        fake_db = self.database_mocker(CarModel, CAR_MODEL_TABLE_DATA,
+                                       INVALID_CAR_MODEL_WITH_NULL_ITEM_DATA, 'car_id', 'N',
+                                 '123')
+
+        with patch(PATCH_METHOD, new=fake_db) as req:
+            req.return_value = INVALID_CAR_MODEL_WITH_NULL_ITEM_DATA
+            item = CarModel.get(123)
+            self.assertEquals(item.car_id,
+                              int(INVALID_CAR_MODEL_WITH_NULL_ITEM_DATA.get(ITEM).get(
+                                  'car_id').get(NUMBER_SHORT)))
+            self.assertIsNone(item.car_info.make)
+
+    def test_new_style_boolean_serializes_as_bool(self):
+        with patch(PATCH_METHOD) as req:
+            req.return_value = BOOLEAN_CONVERSION_MODEL_TABLE_DATA
+            item = BooleanConversionModel(user_name='justin', is_human=True)
+            item.save()
+
+    def test_old_style_boolean_serializes_as_bool(self):
+        with patch(PATCH_METHOD) as req:
+            req.return_value = BOOLEAN_CONVERSION_MODEL_TABLE_DATA_OLD_STYLE
+            item = BooleanConversionModel(user_name='justin', is_human=True)
+            item.save()
+
+    def test_deserializing_old_style_bool_false_works(self):
+        fake_db = self.database_mocker(BooleanConversionModel, BOOLEAN_CONVERSION_MODEL_TABLE_DATA,
+                                       BOOLEAN_CONVERSION_MODEL_OLD_STYLE_FALSE_ITEM_DATA,
+                                 'user_name', 'S',
+                                 'alf')
+        with patch(PATCH_METHOD, new=fake_db) as req:
+            req.return_value = BOOLEAN_CONVERSION_MODEL_OLD_STYLE_FALSE_ITEM_DATA
+            item = BooleanConversionModel.get('alf')
+            self.assertFalse(item.is_human)
+
+    def test_deserializing_old_style_bool_true_works(self):
+        fake_db = self.database_mocker(BooleanConversionModel,
+                                       BOOLEAN_CONVERSION_MODEL_TABLE_DATA,
+                                       BOOLEAN_CONVERSION_MODEL_OLD_STYLE_TRUE_ITEM_DATA,
+                                 'user_name', 'S',
+                                 'justin')
+        with patch(PATCH_METHOD, new=fake_db) as req:
+            req.return_value = BOOLEAN_CONVERSION_MODEL_OLD_STYLE_TRUE_ITEM_DATA
+            item = BooleanConversionModel.get('justin')
+            self.assertTrue(item.is_human)
+
+    def test_deserializing_new_style_bool_false_works(self):
+        fake_db = self.database_mocker(BooleanConversionModel,
+                                       BOOLEAN_CONVERSION_MODEL_TABLE_DATA,
+                                       BOOLEAN_CONVERSION_MODEL_NEW_STYLE_FALSE_ITEM_DATA,
+                                 'user_name', 'S',
+                                 'alf')
+        with patch(PATCH_METHOD, new=fake_db) as req:
+            req.return_value = BOOLEAN_CONVERSION_MODEL_NEW_STYLE_FALSE_ITEM_DATA
+            item = BooleanConversionModel.get('alf')
+            self.assertFalse(item.is_human)
+
+    def test_deserializing_new_style_bool_true_works(self):
+        fake_db = self.database_mocker(BooleanConversionModel,
+                                       BOOLEAN_CONVERSION_MODEL_TABLE_DATA,
+                                       BOOLEAN_CONVERSION_MODEL_NEW_STYLE_TRUE_ITEM_DATA,
+                                 'user_name', 'S',
+                                 'justin')
+        with patch(PATCH_METHOD, new=fake_db) as req:
+            req.return_value = BOOLEAN_CONVERSION_MODEL_NEW_STYLE_TRUE_ITEM_DATA
+            item = BooleanConversionModel.get('justin')
+            self.assertTrue(item.is_human)
+
+    def test_deserializing_map_four_layers_deep_works(self):
+        fake_db = self.database_mocker(TreeModel,
+                                       TREE_MODEL_TABLE_DATA,
+                                       TREE_MODEL_ITEM_DATA,
+                                 'tree_key', 'S',
+                                 '123')
+        with patch(PATCH_METHOD, new=fake_db) as req:
+            req.return_value = TREE_MODEL_ITEM_DATA
+            item = TreeModel.get('123')
+            self.assertEquals(item.left.left.left.value, 3)
+
+    def test_conditional_operator_map_attribute(self):
+        with patch(PATCH_METHOD) as req:
+            req.return_value = {}
+            item = self._get_complex_thing()
+            with self.assertRaises(NotImplementedError):
+                item.save(key=123, conditional_operator='OR')
+            with self.assertRaises(NotImplementedError):
+                item.delete(key=123, conditional_operator='OR')
+            with self.assertRaises(NotImplementedError):
+                item.update_item(123, conditional_operator='OR')
+            with self.assertRaises(NotImplementedError):
+                list(ComplexModel.query(123, limit=20, conditional_operator='OR'))
+            with self.assertRaises(NotImplementedError):
+                list(ComplexModel.scan(conditional_operator='OR'))
+
+    def test_result_set_init(self):
+        results = []
+        operations = 1
+        arguments = 'args'
+        rs = ResultSet(results=results, operation=operations, arguments=arguments)
+        self.assertEquals(rs.results, results)
+        self.assertEquals(rs.operation, operations)
+        self.assertEquals(rs.arguments, arguments)
+
+    def test_result_set_iter(self):
+        results = [1, 2, 3]
+        operations = 1
+        arguments = 'args'
+        rs = ResultSet(results=results, operation=operations, arguments=arguments)
+        for k in rs:
+            self.assertTrue(k in results)
+
+    def test_explicit_raw_map_serialize_pass(self):
+        map_native = {'foo': 'bar'}
+        map_serialized = {'M': {'foo': {'S': 'bar'}}}
+        instance = ExplicitRawMapModel(map_attr=map_native)
+        serialized = instance._serialize()
+        self.assertEqual(serialized['attributes']['map_attr'], map_serialized)
+
+    def test_raw_map_serialize_fun_one(self):
+        map_native = {
+            'foo': 'bar', 'num': 12345678909876543211234234324234, 'bool_type': True,
+            'other_b_type': False, 'floaty': 1.2, 'listy': [1,2,3],
+            'mapy': {'baz': 'bongo'}
+        }
+        expected = {'M': {'foo': {'S': u'bar'},
+               'listy': {'L': [{'N': '1'}, {'N': '2'}, {'N': '3'}]},
+               'num': {'N': '12345678909876543211234234324234'}, 'other_b_type': {'BOOL': False},
+               'floaty': {'N': '1.2'}, 'mapy': {'M': {'baz': {'S': u'bongo'}}},
+               'bool_type': {'BOOL': True}}}
+
+        instance = ExplicitRawMapModel(map_attr=map_native)
+        serialized = instance._serialize()
+        actual = serialized['attributes']['map_attr']
+        self.assertEqual(expected, actual)
+
+    def test_raw_map_deserializes(self):
+        map_native = {
+            'foo': 'bar', 'num': 1, 'bool_type': True,
+            'other_b_type': False, 'floaty': 1.2, 'listy': [1, 2, 12345678909876543211234234324234],
+            'mapy': {'baz': 'bongo'}
+        }
+        map_serialized = {
+            'M': {
+                'foo': {'S': 'bar'},
+                'num': {'N': '1'},
+                'bool_type': {'BOOL': True},
+                'other_b_type': {'BOOL': False},
+                'floaty': {'N': '1.2'},
+                'listy': {'L': [{'N': '1'}, {'N': '2'}, {'N': '12345678909876543211234234324234'}]},
+                'mapy': {'M': {'baz': {'S': 'bongo'}}}
+            }
+        }
+        instance = ExplicitRawMapModel(map_attr=map_native)
+        instance._deserialize(map_serialized)
+        actual = instance.map_attr
+        for k, v in six.iteritems(map_native):
+            self.assertEqual(v, actual[k])
+
+    def test_raw_map_from_raw_data_works(self):
+        map_native = {
+            'foo': 'bar', 'num': 1, 'bool_type': True,
+            'other_b_type': False, 'floaty': 1.2, 'listy': [1, 2, 12345678909876543211234234324234],
+            'mapy': {'baz': 'bongo'}
+        }
+        fake_db = self.database_mocker(ExplicitRawMapModel,
+                                       EXPLICIT_RAW_MAP_MODEL_TABLE_DATA,
+                                       EXPLICIT_RAW_MAP_MODEL_ITEM_DATA,
+                                       'map_id', 'N',
+                                       '123')
+        with patch(PATCH_METHOD, new=fake_db):
+            item = ExplicitRawMapModel.get(123)
+            actual = item.map_attr
+            self.assertEqual(map_native.get('listy')[2], actual['listy'][2])
+            for k, v in six.iteritems(map_native):
+                self.assertEqual(v, actual[k])
+
+    def test_raw_map_as_sub_map_serialize_pass(self):
+        map_native = {'a': 'dict', 'lives': [123, 456], 'here': True}
+        map_serialized = {
+            'M': {
+                'a': {'S': 'dict'},
+                'lives': {'L': [{'N': '123'}, {'N': '456'}]},
+                'here': {'BOOL': True}
+            }
+        }
+        instance = ExplicitRawMapAsMemberOfSubClass(
+            map_id=123,
+            sub_attr=MapAttrSubClassWithRawMapAttr(
+                num_field=37, str_field='hi',
+                map_field=map_native
+            )
+        )
+        serialized = instance._serialize()
+        self.assertEqual(serialized['attributes']['sub_attr']['M']['map_field'], map_serialized)
+
+    def _get_raw_map_as_sub_map_test_data(self):
+        map_native = {
+            'foo': 'bar', 'num': 1, 'bool_type': True,
+            'other_b_type': False, 'floaty': 1.2, 'listy': [1, 2, 3],
+            'mapy': {'baz': 'bongo'}
+        }
+        map_serialized = {
+            'M': {
+                'foo': {'S': 'bar'},
+                'num': {'N': '1'},
+                'bool_type': {'BOOL': True},
+                'other_b_type': {'BOOL': False},
+                'floaty': {'N': '1.2'},
+                'listy': {'L': [{'N': '1'}, {'N': '2'}, {'N': '3'}]},
+                'mapy': {'M': {'baz': {'S': 'bongo'}}}
+            }
+        }
+
+        sub_attr = MapAttrSubClassWithRawMapAttr(
+            num_field=37, str_field='hi', map_field=map_native
+        )
+
+        instance = ExplicitRawMapAsMemberOfSubClass(
+            map_id=123,
+            sub_attr=sub_attr
+        )
+        return map_native, map_serialized, sub_attr, instance
+
+    def test_raw_map_as_sub_map(self):
+        map_native, map_serialized, sub_attr, instance = self._get_raw_map_as_sub_map_test_data()
+        actual = instance.sub_attr
+        self.assertEqual(sub_attr, actual)
+        self.assertEqual(actual.map_field['floaty'], map_native.get('floaty'))
+        self.assertEqual(actual.map_field['mapy']['baz'], map_native.get('mapy').get('baz'))
+
+    def test_raw_map_as_sub_map_deserialize(self):
+        map_native, map_serialized, _, _ = self._get_raw_map_as_sub_map_test_data()
+
+        actual = MapAttrSubClassWithRawMapAttr().deserialize({
+            "map_field": map_serialized
+        })
+
+        for k, v in six.iteritems(map_native):
+            self.assertEqual(actual.map_field[k], v)
+
+    def test_raw_map_as_sub_map_from_raw_data_works(self):
+        map_native, map_serialized, sub_attr, instance = self._get_raw_map_as_sub_map_test_data()
+        fake_db = self.database_mocker(ExplicitRawMapAsMemberOfSubClass,
+                                       EXPLICIT_RAW_MAP_MODEL_AS_SUB_MAP_IN_TYPED_MAP_TABLE_DATA,
+                                       EXPLICIT_RAW_MAP_MODEL_AS_SUB_MAP_IN_TYPED_MAP_ITEM_DATA,
+                                       'map_id', 'N',
+                                       '123')
+        with patch(PATCH_METHOD, new=fake_db):
+            item = ExplicitRawMapAsMemberOfSubClass.get(123)
+            actual = item.sub_attr
+            self.assertEqual(sub_attr.map_field['floaty'],
+                             map_native.get('floaty'))
+            self.assertEqual(actual.map_field['mapy']['baz'],
+                             map_native.get('mapy').get('baz'))
+
+    def test_model_subclass_attributes_inherited_on_create(self):
+        scope_args = {'count': 0}
+
+        def fake_dynamodb(*args, **kwargs):
+            if scope_args['count'] == 0:
+                scope_args['count'] += 1
+                raise ClientError({'Error': {'Code': 'ResourceNotFoundException', 'Message': 'Not Found'}},
+                                  "DescribeTable")
+            return {}
+
+        fake_db = MagicMock()
+        fake_db.side_effect = fake_dynamodb
+
+        with patch(PATCH_METHOD, new=fake_db) as req:
+            Dog.create_table(read_capacity_units=2, write_capacity_units=2)
+
+            actual = req.call_args_list[1][0][1]
+
+            self.assertEquals(actual['TableName'], DOG_TABLE_DATA['Table']['TableName'])
+            self.assert_dict_lists_equal(actual['KeySchema'], DOG_TABLE_DATA['Table']['KeySchema'])
+            self.assert_dict_lists_equal(actual['AttributeDefinitions'],
+                                         DOG_TABLE_DATA['Table']['AttributeDefinitions'])
+
+
+class ModelInitTestCase(TestCase):
+
+    def test_raw_map_attribute_with_dict_init(self):
+        attribute = {
+            'foo': 123,
+            'bar': 'baz'
+        }
+        actual = ExplicitRawMapModel(map_id=3, map_attr=attribute)
+        self.assertEquals(actual.map_attr['foo'], attribute['foo'])
+
+    def test_raw_map_attribute_with_initialized_instance_init(self):
+        attribute = {
+            'foo': 123,
+            'bar': 'baz'
+        }
+        initialized_instance = MapAttribute(**attribute)
+        actual = ExplicitRawMapModel(map_id=3, map_attr=initialized_instance)
+        self.assertEquals(actual.map_attr['foo'], initialized_instance['foo'])
+        self.assertEquals(actual.map_attr['foo'], attribute['foo'])
+
+    def test_subclassed_map_attribute_with_dict_init(self):
+        attribute = {
+            'make': 'Volkswagen',
+            'model': 'Super Beetle'
+        }
+        expected_model = CarInfoMap(**attribute)
+        actual = CarModel(car_id=1, car_info=attribute)
+        self.assertEquals(expected_model.make, actual.car_info.make)
+        self.assertEquals(expected_model.model, actual.car_info.model)
+
+    def test_subclassed_map_attribute_with_initialized_instance_init(self):
+        attribute = {
+            'make': 'Volkswagen',
+            'model': 'Super Beetle'
+        }
+        expected_model = CarInfoMap(**attribute)
+        actual = CarModel(car_id=1, car_info=expected_model)
+        self.assertEquals(expected_model.make, actual.car_info.make)
+        self.assertEquals(expected_model.model, actual.car_info.model)
+
+    def _get_bin_tree(self, multiplier=1):
+        return {
+            'value': 5 * multiplier,
+            'left': {
+                'value': 2 * multiplier,
+                'left': {
+                    'value': 1 * multiplier
+                },
+                'right': {
+                    'value': 3 * multiplier
+                }
+            },
+            'right': {
+                'value': 7 * multiplier,
+                'left': {
+                    'value': 6 * multiplier
+                },
+                'right': {
+                    'value': 8 * multiplier
+                }
+            }
+        }
+
+    def test_subclassed_map_attribute_with_map_attributes_member_with_dict_init(self):
+        left = self._get_bin_tree()
+        right = self._get_bin_tree(multiplier=2)
+        actual = TreeModel(tree_key='key', left=left, right=right)
+        self.assertEquals(actual.left.left.right.value, 3)
+        self.assertEquals(actual.left.left.value, 2)
+        self.assertEquals(actual.right.right.left.value, 12)
+        self.assertEquals(actual.right.right.value, 14)
+
+    def test_subclassed_map_attribute_with_map_attribute_member_with_initialized_instance_init(self):
+        left = self._get_bin_tree()
+        right = self._get_bin_tree(multiplier=2)
+        left_instance = TreeLeaf(**left)
+        right_instance = TreeLeaf(**right)
+        actual = TreeModel(tree_key='key', left=left_instance, right=right_instance)
+        self.assertEquals(actual.left.left.right.value, left_instance.left.right.value)
+        self.assertEquals(actual.left.left.value, left_instance.left.value)
+        self.assertEquals(actual.right.right.left.value, right_instance.right.left.value)
+        self.assertEquals(actual.right.right.value, right_instance.right.value)

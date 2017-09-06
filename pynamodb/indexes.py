@@ -45,6 +45,8 @@ class Index(with_metaclass(IndexMeta)):
     @classmethod
     def count(cls,
               hash_key,
+              range_key_condition=None,
+              filter_condition=None,
               consistent_read=False,
               **filters):
         """
@@ -52,6 +54,8 @@ class Index(with_metaclass(IndexMeta)):
         """
         return cls.Meta.model.count(
             hash_key,
+            range_key_condition=range_key_condition,
+            filter_condition=filter_condition,
             index_name=cls.Meta.index_name,
             consistent_read=consistent_read,
             **filters
@@ -60,19 +64,27 @@ class Index(with_metaclass(IndexMeta)):
     @classmethod
     def query(self,
               hash_key,
+              range_key_condition=None,
+              filter_condition=None,
               scan_index_forward=None,
               consistent_read=False,
               limit=None,
+              last_evaluated_key=None,
+              attributes_to_get=None,
               **filters):
         """
         Queries an index
         """
         return self.Meta.model.query(
             hash_key,
+            range_key_condition=range_key_condition,
+            filter_condition=filter_condition,
             index_name=self.Meta.index_name,
             scan_index_forward=scan_index_forward,
             consistent_read=consistent_read,
             limit=limit,
+            last_evaluated_key=last_evaluated_key,
+            attributes_to_get=attributes_to_get,
             **filters
         )
 
