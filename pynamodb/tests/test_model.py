@@ -2931,6 +2931,7 @@ class ModelTestCase(TestCase):
 
         with patch(PATCH_METHOD, new=batch_get_mock) as req:
             item_keys = [('hash-{0}'.format(x), '{0}'.format(x)) for x in range(200)]
+            UserModel._connection.connection._handle_binary_attributes(item_keys)
             for item in UserModel.batch_get(item_keys):
                 self.assertIsNotNone(item)
 

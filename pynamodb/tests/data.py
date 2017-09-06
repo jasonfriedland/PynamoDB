@@ -726,7 +726,17 @@ GET_ITEM_DATA = {
 
 
 SIMPLE_BATCH_GET_ITEMS = {
-    'UnprocessedKeys': {},
+    'UnprocessedKeys': {
+        'real_departures_2': {
+            'Keys': [
+                 {'station_id': {'S': '8739322'}, 'day_train_num': {'S': '20170401_496702'}},
+                 {'station_id': {'S': '8738149'}, 'day_train_num': {'S': '20170401_497601'}},
+                 {'station_id': {'S': '8711386'}, 'day_train_num': {'S': '20170401_499001'}},
+                 {'station_id': {'S': '8738237'}, 'day_train_num': {'S': '20170401_496703'}},
+                 {'station_id': {'S': '8738180'}, 'day_train_num': {'S': '20170401_497601'}}
+            ]
+        }
+    },
     'Responses': {
         'SimpleModel': [
             {'user_name': {'S': '9'}, 'epoch': {'S': '2014-01-22T15:06:48.151712+0000'}, 'user_id': {'S': 'hash-9'}},
@@ -745,7 +755,17 @@ SIMPLE_BATCH_GET_ITEMS = {
 
 
 BATCH_GET_ITEMS = {
-    'UnprocessedKeys': {},
+    'UnprocessedKeys': {
+        'real_departures_2': {
+            'Keys': [
+                 {'station_id': {'S': '8739322'}, 'day_train_num': {'S': '20170401_496702'}},
+                 {'station_id': {'S': '8738149'}, 'day_train_num': {'S': '20170401_497601'}},
+                 {'station_id': {'S': '8711386'}, 'day_train_num': {'S': '20170401_499001'}},
+                 {'station_id': {'S': '8738237'}, 'day_train_num': {'S': '20170401_496703'}},
+                 {'station_id': {'S': '8738180'}, 'day_train_num': {'S': '20170401_497601'}}
+            ]
+        }
+    },
     'Responses': {
         'UserModel': [
             {'user_name': {'S': '9'}, 'epoch': {'S': '2014-01-22T15:06:48.151712+0000'}, 'user_id': {'S': 'hash-9'}},

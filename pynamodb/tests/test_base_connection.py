@@ -9,7 +9,7 @@ from pynamodb.connection import Connection
 from botocore.vendored import requests
 from pynamodb.exceptions import (VerboseClientError,
     TableError, DeleteError, UpdateError, PutError, GetError, ScanError, QueryError, TableDoesNotExist)
-from pynamodb.constants import DEFAULT_REGION, UNPROCESSED_ITEMS, STRING_SHORT, BINARY_SHORT, DEFAULT_ENCODING
+from pynamodb.constants import DEFAULT_REGION, UNPROCESSED_ITEMS, UNPROCESSED_KEYS, STRING_SHORT, BINARY_SHORT, DEFAULT_ENCODING
 from pynamodb.expressions.operand import Path
 from pynamodb.tests.data import DESCRIBE_TABLE_DATA, GET_ITEM_DATA, LIST_TABLE_DATA
 from pynamodb.tests.deep_eq import deep_eq
@@ -2503,6 +2503,21 @@ class ConnectionTestCase(TestCase):
         deep_eq(
             Connection._handle_binary_attributes({UNPROCESSED_ITEMS: {'someTable': unprocessed_items}}),
             {UNPROCESSED_ITEMS: {'someTable': expected_unprocessed_items}},
+            _assert=True
+        )
+
+    def test_handle_binary_attributes_for_unprocessed_keys(self):
+
+        unprocessed_keys = []
+        expected_unprocessed_keys = []
+        for idx in range(0, 5):
+            k = {'station_id': {STRING_SHORT: '{}'.format(idx)}, 'name': {STRING_SHORT: 'asdf'}}
+            unprocessed_keys.append(k)
+            expected_unprocessed_keys.append(k)
+
+        deep_eq(
+            Connection._handle_binary_attributes({UNPROCESSED_KEYS: {'someTable': unprocessed_keys}}),
+            {UNPROCESSED_KEYS: {'someTable': expected_unprocessed_keys}},
             _assert=True
         )
 
